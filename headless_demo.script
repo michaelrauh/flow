@@ -1,0 +1,8 @@
+# load the current default level by name
+level turn
+
+# put a wall two tiles above the bottom emitter (x=11, y=4)
+add 11,4
+
+# wait ten seconds with the wall in place, then output the board
+wait_ms 10000

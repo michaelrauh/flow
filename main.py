@@ -6,6 +6,7 @@ from dataclasses import dataclass
 TILE = 24
 FPS = 60
 STEP_MS = 120
+STATIONARY_DECAY_MS = 5000
 
 LEVEL_BACKUP = [
     "####################",
@@ -18,25 +19,25 @@ LEVEL_BACKUP = [
     "####################",
 ]
 
-LEVEL_DENSE = [
+LEVEL_DENSE_WIDE = [
     "############################",
     "#>...............#........S#",
     "#>........................S#",
     "############################",
 ]
 
-LEVEL_DENSE = [
+LEVEL_DENSE_TURN = [
     "############################",
     "#>........................S#",
-    "#.........................S#",
-    "#.........................S#",
-    "#.........................S#",
-    "#.........................S#",
+    "#..........................#",
+    "#..........................#",
+    "#..........................#",
+    "#..........................#",
     "#.........^...............S#",
     "############################",
 ]
 
-# LEVEL_DENSE = [
+# LEVEL_MAZE = [
 #     "############################",
 #     "#>..#....#....#....#....#..#",
 #     "#.#.#.##.#.##.#.##.#.##.#..#",
@@ -51,7 +52,12 @@ LEVEL_DENSE = [
 #     "############################",
 # ]
 
-LEVEL = LEVEL_DENSE
+LEVEL = LEVEL_DENSE_TURN
+LEVELS = {
+    "backup": LEVEL_BACKUP,
+    "wide": LEVEL_DENSE_WIDE,
+    "turn": LEVEL_DENSE_TURN,
+}
 
 DIRS = {
     "^": (0, -1),
@@ -85,10 +91,16 @@ def parse_level(lines):
                 sinks.add((x, y))
     return w, h, walls, emitters, sinks
 
+def get_level(name):
+    if name in LEVELS:
+        return LEVELS[name]
+    raise ValueError(f"Unknown level '{name}'. Known levels: {', '.join(sorted(LEVELS))}")
+
 def in_bounds(x, y, w, h):
     return 0 <= x < w and 0 <= y < h
 
 def tick(w, h, walls, emitters, sinks, water):
+    decay_steps = max(1, int(math.ceil(STATIONARY_DECAY_MS / float(STEP_MS))))
     occupied = set(water.keys())
 
     for e in emitters:
@@ -96,11 +108,11 @@ def tick(w, h, walls, emitters, sinks, water):
         if in_bounds(tx, ty, w, h) and (tx, ty) not in walls and (tx, ty) not in occupied:
             if (tx, ty) in sinks:
                 continue
-            water[(tx, ty)] = (e.dx, e.dy)
+            water[(tx, ty)] = (e.dx, e.dy, 0)
             occupied.add((tx, ty))
 
     proposals = {}
-    for (x, y), (dx, dy) in list(water.items()):
+    for (x, y), (dx, dy, age) in list(water.items()):
         fx, fy = x + dx, y + dy
         forward_blocked = (
             not in_bounds(fx, fy, w, h)
@@ -143,7 +155,7 @@ def tick(w, h, walls, emitters, sinks, water):
         else:
             def priority(move):
                 src, ndx, ndy = move
-                odx, ody = water.get(src, (ndx, ndy))
+                odx, ody, _ = water.get(src, (ndx, ndy, 0))
                 straight = (ndx, ndy) == (odx, ody)
                 return (0 if straight else 1, src[1], src[0])
             src, ndx, ndy = min(movers, key=priority)
@@ -179,13 +191,17 @@ def tick(w, h, walls, emitters, sinks, water):
         return memo[src]
 
     next_water = {}
-    for (x, y), (dx, dy) in water.items():
+    for (x, y), (dx, dy, age) in water.items():
         if (x, y) in edges and move_succeeds((x, y)):
             (nx, ny), ndx, ndy = edges[(x, y)]
             if (nx, ny) not in sinks:
-                next_water[(nx, ny)] = (ndx, ndy)
+                new_age = 0 if (nx, ny) != (x, y) else age + 1
+                if new_age < decay_steps:
+                    next_water[(nx, ny)] = (ndx, ndy, new_age)
         else:
-            next_water[(x, y)] = (dx, dy)
+            new_age = age + 1
+            if new_age < decay_steps:
+                next_water[(x, y)] = (dx, dy, new_age)
 
     water.clear()
     water.update(next_water)
@@ -198,19 +214,92 @@ def render_ascii(w, h, walls, emitters, sinks, water):
         grid[y][x] = "S"
     for e in emitters:
         grid[e.y][e.x] = DIR_TO_CHAR.get((e.dx, e.dy), "E")
-    for (x, y), (dx, dy) in water.items():
+    for (x, y), (dx, dy, age) in water.items():
         if grid[y][x] in "#S":
             continue
         grid[y][x] = DIR_TO_CHAR.get((dx, dy), "~")
     return "\n".join("".join(row) for row in grid)
 
-def run_headless(duration_ms, level):
+def run_headless(duration_ms, level, script=None, level_name="turn"):
+    if script:
+        run_script(script, level_name)
+        return
     w, h, walls, emitters, sinks = parse_level(level)
     water = {}
     steps = max(1, int(math.ceil(duration_ms / float(STEP_MS))))
     for _ in range(steps):
         tick(w, h, walls, emitters, sinks, water)
     print(f"Simulated {steps} steps (~{duration_ms} ms)")
+    print(render_ascii(w, h, walls, emitters, sinks, water))
+
+def run_script(script_text, default_level_name="turn"):
+    level_lines = get_level(default_level_name)
+    w, h, walls, emitters, sinks = parse_level(level_lines)
+    water = {}
+
+    def advance_steps(steps):
+        for _ in range(max(0, steps)):
+            tick(w, h, walls, emitters, sinks, water)
+
+    def parse_coord(token):
+        if "," in token:
+            xs, ys = token.split(",", 1)
+        elif "x" in token:
+            xs, ys = token.split("x", 1)
+        else:
+            raise ValueError(f"Expected coordinate like '3,4', got '{token}'")
+        return int(xs), int(ys)
+
+    for raw in script_text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        # Support semicolon-separated commands on one line
+        commands = [cmd.strip() for cmd in line.split(";") if cmd.strip()]
+        for cmd in commands:
+            parts = cmd.split()
+            name = parts[0].lower()
+            args = parts[1:]
+
+            if name == "level":
+                if not args:
+                    raise ValueError("level <name> expected")
+                level_lines = get_level(args[0])
+                w, h, walls, emitters, sinks = parse_level(level_lines)
+                water.clear()
+            elif name in ("wait", "step", "steps", "tick"):
+                steps = int(args[0]) if args else 1
+                advance_steps(steps)
+            elif name in ("wait_ms", "sleep"):
+                if not args:
+                    raise ValueError("wait_ms <millis> expected")
+                ms = int(args[0])
+                steps = max(1, int(math.ceil(ms / float(STEP_MS))))
+                advance_steps(steps)
+            elif name in ("add", "wall+", "wall"):
+                if not args:
+                    raise ValueError("add <x,y>")
+                x, y = parse_coord(args[0])
+                if not in_bounds(x, y, w, h):
+                    continue
+                if (x, y) in [(e.x, e.y) for e in emitters]:
+                    continue
+                if (x, y) in sinks:
+                    continue
+                walls.add((x, y))
+                water.pop((x, y), None)
+            elif name in ("remove", "rm", "del", "wall-"):
+                if not args:
+                    raise ValueError("remove <x,y>")
+                x, y = parse_coord(args[0])
+                if not in_bounds(x, y, w, h):
+                    continue
+                walls.discard((x, y))
+                water.pop((x, y), None)
+            else:
+                raise ValueError(f"Unknown script command '{name}'")
+
+    print("Script complete")
     print(render_ascii(w, h, walls, emitters, sinks, water))
 
 def main():
@@ -221,19 +310,41 @@ def main():
         help="Run without a window for a duration and print ASCII board state.",
     )
     parser.add_argument(
+        "--level",
+        default="turn",
+        help="Level to load (choices: {}).".format(", ".join(sorted(LEVELS))),
+    )
+    parser.add_argument(
         "--duration-ms",
         type=int,
         default=5000,
         help="Duration to simulate in headless mode.",
     )
+    parser.add_argument(
+        "--script",
+        help="Tiny DSL: commands separated by newlines/semicolons: level NAME | wait N | wait_ms MS | add X,Y | remove X,Y",
+    )
+    parser.add_argument(
+        "--script-file",
+        help="Path to a script file using the DSL (ignored if --script is provided).",
+    )
     args = parser.parse_args()
 
+    level_lines = get_level(args.level)
+
+    script_text = None
+    if args.script:
+        script_text = args.script
+    elif args.script_file:
+        with open(args.script_file, "r") as fh:
+            script_text = fh.read()
+
     if args.headless:
-        run_headless(args.duration_ms, LEVEL)
+        run_headless(args.duration_ms, level_lines, script=script_text, level_name=args.level)
         return
 
     pygame.init()
-    w, h, walls, emitters, sinks = parse_level(LEVEL)
+    w, h, walls, emitters, sinks = parse_level(level_lines)
     screen = pygame.display.set_mode((w * TILE, h * TILE))
     clock = pygame.time.Clock()
 
@@ -289,7 +400,7 @@ def main():
             ax, ay = cx + e.dx * (TILE // 3), cy + e.dy * (TILE // 3)
             pygame.draw.line(screen, (30, 20, 10), (cx, cy), (ax, ay), 3)
 
-        for (x, y), (dx, dy) in water.items():
+        for (x, y), (dx, dy, age) in water.items():
             cx, cy = x * TILE + TILE // 2, y * TILE + TILE // 2
             ex, ey = cx + dx * (TILE // 2 - 3), cy + dy * (TILE // 2 - 3)
             pygame.draw.circle(screen, (60, 140, 220), (cx, cy), TILE // 3)
