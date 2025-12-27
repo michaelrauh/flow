@@ -1,0 +1,3 @@
+# Base case: no wall changes; jam should persist even after long wait.
+level turn
+wait_ms 10000

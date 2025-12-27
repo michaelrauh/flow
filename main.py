@@ -6,7 +6,7 @@ from dataclasses import dataclass
 TILE = 24
 FPS = 60
 STEP_MS = 120
-STATIONARY_DECAY_MS = 5000
+STATIONARY_DECAY_MS = 250
 
 LEVEL_BACKUP = [
     "####################",
@@ -67,12 +67,139 @@ DIRS = {
 }
 DIR_TO_CHAR = {v: k for k, v in DIRS.items()}
 SINK = "S"
+
+_WALL_SURFACE = None
+_SINK_SURFACE = None
+_EMITTER_SURFACE_CACHE = {}
+_WATER_SURFACE_CACHE = {}
+
 @dataclass(frozen=True)
 class Emitter:
+    id: int
     x: int
     y: int
     dx: int
     dy: int
+
+
+def _make_surface(color):
+    surface = pygame.Surface((TILE, TILE), pygame.SRCALPHA)
+    surface.fill(color)
+    return surface
+
+
+def get_wall_surface():
+    global _WALL_SURFACE
+    if _WALL_SURFACE is None:
+        _WALL_SURFACE = _make_surface((80, 80, 80))
+    return _WALL_SURFACE
+
+
+def get_sink_surface():
+    global _SINK_SURFACE
+    if _SINK_SURFACE is None:
+        surface = _make_surface((70, 30, 30))
+        center = (TILE // 2, TILE // 2)
+        pygame.draw.circle(surface, (20, 10, 10), center, TILE // 4)
+        _SINK_SURFACE = surface
+    return _SINK_SURFACE
+
+
+def get_emitter_surface(dx, dy):
+    key = (dx, dy)
+    if key not in _EMITTER_SURFACE_CACHE:
+        surface = _make_surface((160, 140, 40))
+        center = (TILE // 2, TILE // 2)
+        arrow_end = (
+            center[0] + dx * (TILE // 3),
+            center[1] + dy * (TILE // 3),
+        )
+        pygame.draw.line(surface, (30, 20, 10), center, arrow_end, 3)
+        _EMITTER_SURFACE_CACHE[key] = surface
+    return _EMITTER_SURFACE_CACHE[key]
+
+
+def get_water_surface(dx, dy):
+    key = (dx, dy)
+    if key not in _WATER_SURFACE_CACHE:
+        surface = pygame.Surface((TILE, TILE), pygame.SRCALPHA)
+        center = (TILE // 2, TILE // 2)
+        pygame.draw.circle(surface, (60, 140, 220), center, TILE // 3)
+        arrow_end = (
+            center[0] + dx * (TILE // 2 - 3),
+            center[1] + dy * (TILE // 2 - 3),
+        )
+        pygame.draw.line(surface, (200, 230, 255), center, arrow_end, 3)
+        _WATER_SURFACE_CACHE[key] = surface
+    return _WATER_SURFACE_CACHE[key]
+
+
+class TileSprite(pygame.sprite.Sprite):
+    def __init__(self, x, y, image):
+        super().__init__()
+        self.grid_pos = (x, y)
+        self.image = image
+        self.rect = self.image.get_rect()
+        self.rect.topleft = (x * TILE, y * TILE)
+
+
+class WallSprite(TileSprite):
+    def __init__(self, x, y):
+        super().__init__(x, y, get_wall_surface())
+
+
+class SinkSprite(TileSprite):
+    def __init__(self, x, y):
+        super().__init__(x, y, get_sink_surface())
+
+
+class EmitterSprite(TileSprite):
+    def __init__(self, emitter):
+        super().__init__(emitter.x, emitter.y, get_emitter_surface(emitter.dx, emitter.dy))
+
+
+class WaterSprite(TileSprite):
+    def __init__(self, x, y, dx, dy):
+        super().__init__(x, y, get_water_surface(dx, dy))
+        self.dx = dx
+        self.dy = dy
+
+    def update_state(self, x, y, dx, dy):
+        if (dx, dy) != (self.dx, self.dy):
+            self.image = get_water_surface(dx, dy)
+        self.dx, self.dy = dx, dy
+        if (x, y) != self.grid_pos:
+            self.grid_pos = (x, y)
+            self.rect.topleft = (x * TILE, y * TILE)
+
+
+def build_static_sprites(walls, sinks, emitters):
+    static_sprites = pygame.sprite.Group()
+    wall_lookup = {}
+    for (x, y) in walls:
+        sprite = WallSprite(x, y)
+        wall_lookup[(x, y)] = sprite
+        static_sprites.add(sprite)
+    for (x, y) in sinks:
+        static_sprites.add(SinkSprite(x, y))
+    for emitter in emitters:
+        static_sprites.add(EmitterSprite(emitter))
+    return static_sprites, wall_lookup
+
+
+def sync_water_sprites(water_state, water_group):
+    existing = {(sprite.grid_pos): sprite for sprite in water_group.sprites()}
+    missing = set(existing.keys()) - set(water_state.keys())
+    for pos in missing:
+        existing[pos].kill()
+        existing.pop(pos, None)
+
+    for (x, y), (dx, dy, _age, _eid) in water_state.items():
+        sprite = existing.get((x, y))
+        if sprite is None:
+            water_group.add(WaterSprite(x, y, dx, dy))
+        else:
+            sprite.update_state(x, y, dx, dy)
 
 def parse_level(lines):
     h = len(lines)
@@ -86,7 +213,7 @@ def parse_level(lines):
                 walls.add((x, y))
             elif ch in DIRS:
                 dx, dy = DIRS[ch]
-                emitters.append(Emitter(x, y, dx, dy))
+                emitters.append(Emitter(len(emitters), x, y, dx, dy))
             elif ch == SINK:
                 sinks.add((x, y))
     return w, h, walls, emitters, sinks
@@ -108,11 +235,11 @@ def tick(w, h, walls, emitters, sinks, water):
         if in_bounds(tx, ty, w, h) and (tx, ty) not in walls and (tx, ty) not in occupied:
             if (tx, ty) in sinks:
                 continue
-            water[(tx, ty)] = (e.dx, e.dy, 0)
+            water[(tx, ty)] = (e.dx, e.dy, 0, e.id)
             occupied.add((tx, ty))
 
     proposals = {}
-    for (x, y), (dx, dy, age) in list(water.items()):
+    for (x, y), (dx, dy, age, eid) in list(water.items()):
         fx, fy = x + dx, y + dy
         forward_blocked = (
             not in_bounds(fx, fy, w, h)
@@ -120,7 +247,7 @@ def tick(w, h, walls, emitters, sinks, water):
         )
 
         if not forward_blocked:
-            proposals[(x, y)] = (fx, fy, dx, dy)
+            proposals[(x, y)] = (fx, fy, dx, dy, eid)
             continue
 
         ldx, ldy = dy, -dx
@@ -132,34 +259,40 @@ def tick(w, h, walls, emitters, sinks, water):
                 continue
             if (nx, ny) in walls:
                 continue
-            chosen = (nx, ny, ndx, ndy)
+            chosen = (nx, ny, ndx, ndy, eid)
             break
         if chosen is None:
-            proposals[(x, y)] = (x, y, dx, dy)
+            proposals[(x, y)] = (x, y, dx, dy, eid)
         else:
             proposals[(x, y)] = chosen
 
     targets = {}
-    for src, (nx, ny, ndx, ndy) in proposals.items():
-        targets.setdefault((nx, ny), []).append((src, ndx, ndy))
+    for src, (nx, ny, ndx, ndy, eid) in proposals.items():
+        targets.setdefault((nx, ny), []).append((src, ndx, ndy, eid))
+
+    inflow_targets = {}
+    for tgt, movers in targets.items():
+        incoming_ids = {eid for (src, _, _, eid) in movers if src != tgt}
+        if incoming_ids:
+            inflow_targets[tgt] = incoming_ids
 
     edges = {}
     for tgt, movers in targets.items():
         if tgt in sinks:
-            for (src, ndx, ndy) in movers:
-                edges[src] = (tgt, ndx, ndy)
+            for (src, ndx, ndy, eid) in movers:
+                edges[src] = (tgt, ndx, ndy, eid)
             continue
         if len(movers) == 1:
-            (src, ndx, ndy) = movers[0]
-            edges[src] = (tgt, ndx, ndy)
+            (src, ndx, ndy, eid) = movers[0]
+            edges[src] = (tgt, ndx, ndy, eid)
         else:
             def priority(move):
-                src, ndx, ndy = move
-                odx, ody, _ = water.get(src, (ndx, ndy, 0))
+                src, ndx, ndy, eid = move
+                odx, ody, _, _ = water.get(src, (ndx, ndy, 0, eid))
                 straight = (ndx, ndy) == (odx, ody)
                 return (0 if straight else 1, src[1], src[0])
-            src, ndx, ndy = min(movers, key=priority)
-            edges[src] = (tgt, ndx, ndy)
+            src, ndx, ndy, eid = min(movers, key=priority)
+            edges[src] = (tgt, ndx, ndy, eid)
 
     memo = {}
     visiting = set()
@@ -172,7 +305,7 @@ def tick(w, h, walls, emitters, sinks, water):
         if src not in edges:
             memo[src] = False
             return False
-        tgt, _, _ = edges[src]
+        tgt, _, _, _ = edges[src]
         if tgt in sinks:
             memo[src] = True
             return True
@@ -191,22 +324,28 @@ def tick(w, h, walls, emitters, sinks, water):
         return memo[src]
 
     next_water = {}
-    for (x, y), (dx, dy, age) in water.items():
+    for (x, y), (dx, dy, age, eid) in water.items():
         if (x, y) in edges and move_succeeds((x, y)):
-            (nx, ny), ndx, ndy = edges[(x, y)]
+            (nx, ny), ndx, ndy, neid = edges[(x, y)]
             if (nx, ny) not in sinks:
-                new_age = 0 if (nx, ny) != (x, y) else age + 1
+                moved = (nx, ny) != (x, y)
+                if moved:
+                    new_age = 0
+                else:
+                    inflow_ids = inflow_targets.get((nx, ny), set())
+                    new_age = 0 if neid in inflow_ids else age + 1
                 if new_age < decay_steps:
-                    next_water[(nx, ny)] = (ndx, ndy, new_age)
+                    next_water[(nx, ny)] = (ndx, ndy, new_age, neid)
         else:
-            new_age = age + 1
+            inflow_ids = inflow_targets.get((x, y), set())
+            new_age = 0 if eid in inflow_ids else age + 1
             if new_age < decay_steps:
-                next_water[(x, y)] = (dx, dy, new_age)
+                next_water[(x, y)] = (dx, dy, new_age, eid)
 
     water.clear()
     water.update(next_water)
 
-def render_ascii(w, h, walls, emitters, sinks, water):
+def render_ascii(w, h, walls, emitters, sinks, water, show_coords=False):
     grid = [["." for _ in range(w)] for _ in range(h)]
     for (x, y) in walls:
         grid[y][x] = "#"
@@ -214,11 +353,19 @@ def render_ascii(w, h, walls, emitters, sinks, water):
         grid[y][x] = "S"
     for e in emitters:
         grid[e.y][e.x] = DIR_TO_CHAR.get((e.dx, e.dy), "E")
-    for (x, y), (dx, dy, age) in water.items():
+    for (x, y), (dx, dy, age, _eid) in water.items():
         if grid[y][x] in "#S":
             continue
         grid[y][x] = DIR_TO_CHAR.get((dx, dy), "~")
-    return "\n".join("".join(row) for row in grid)
+    if not show_coords:
+        return "\n".join("".join(row) for row in grid)
+
+    label_w = max(2, len(str(h - 1)))
+    header = " " * (label_w + 1) + "".join(str(x % 10) for x in range(w))
+    lines = [header]
+    for y, row in enumerate(grid):
+        lines.append(f"{y:>{label_w}} " + "".join(row))
+    return "\n".join(lines)
 
 def run_headless(duration_ms, level, script=None, level_name="turn"):
     if script:
@@ -230,7 +377,7 @@ def run_headless(duration_ms, level, script=None, level_name="turn"):
     for _ in range(steps):
         tick(w, h, walls, emitters, sinks, water)
     print(f"Simulated {steps} steps (~{duration_ms} ms)")
-    print(render_ascii(w, h, walls, emitters, sinks, water))
+    print(render_ascii(w, h, walls, emitters, sinks, water, show_coords=True))
 
 def run_script(script_text, default_level_name="turn"):
     level_lines = get_level(default_level_name)
@@ -300,9 +447,18 @@ def run_script(script_text, default_level_name="turn"):
                 raise ValueError(f"Unknown script command '{name}'")
 
     print("Script complete")
-    print(render_ascii(w, h, walls, emitters, sinks, water))
+    print(render_ascii(w, h, walls, emitters, sinks, water, show_coords=True))
 
 def main():
+    def draw_coords(surface, w, h, font):
+        color = (140, 140, 140)
+        for x in range(w):
+            label = font.render(str(x % 10), True, color)
+            surface.blit(label, (x * TILE + 4, 2))
+        for y in range(h):
+            label = font.render(str(y), True, color)
+            surface.blit(label, (2, y * TILE + 2))
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--headless",
@@ -346,7 +502,11 @@ def main():
     pygame.init()
     w, h, walls, emitters, sinks = parse_level(level_lines)
     screen = pygame.display.set_mode((w * TILE, h * TILE))
+    font = pygame.font.SysFont(None, 14)
     clock = pygame.time.Clock()
+    emitter_positions = {(e.x, e.y) for e in emitters}
+    static_sprites, wall_lookup = build_static_sprites(walls, sinks, emitters)
+    water_sprites = pygame.sprite.Group()
 
     water = {}
     step_acc = 0
@@ -367,15 +527,22 @@ def main():
                     tick(w, h, walls, emitters, sinks, water)
                 elif event.key == pygame.K_r:
                     water.clear()
+                    water_sprites.empty()
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 mx, my = pygame.mouse.get_pos()
                 gx, gy = mx // TILE, my // TILE
-                if (gx, gy) not in [(e.x, e.y) for e in emitters]:
+                if (gx, gy) not in emitter_positions:
                     if event.button == 1:
                         if (gx, gy) in walls:
                             walls.remove((gx, gy))
+                            sprite = wall_lookup.pop((gx, gy), None)
+                            if sprite:
+                                sprite.kill()
                         else:
                             walls.add((gx, gy))
+                            sprite = WallSprite(gx, gy)
+                            wall_lookup[(gx, gy)] = sprite
+                            static_sprites.add(sprite)
                     elif event.button == 3:
                         water.pop((gx, gy), None)
 
@@ -384,27 +551,11 @@ def main():
                 step_acc -= STEP_MS
                 tick(w, h, walls, emitters, sinks, water)
 
+        sync_water_sprites(water, water_sprites)
         screen.fill((20, 20, 20))
-
-        for (x, y) in walls:
-            pygame.draw.rect(screen, (80, 80, 80), (x * TILE, y * TILE, TILE, TILE))
-
-        for (x, y) in sinks:
-            pygame.draw.rect(screen, (70, 30, 30), (x * TILE, y * TILE, TILE, TILE))
-            cx, cy = x * TILE + TILE // 2, y * TILE + TILE // 2
-            pygame.draw.circle(screen, (20, 10, 10), (cx, cy), TILE // 4)
-
-        for e in emitters:
-            pygame.draw.rect(screen, (160, 140, 40), (e.x * TILE, e.y * TILE, TILE, TILE))
-            cx, cy = e.x * TILE + TILE // 2, e.y * TILE + TILE // 2
-            ax, ay = cx + e.dx * (TILE // 3), cy + e.dy * (TILE // 3)
-            pygame.draw.line(screen, (30, 20, 10), (cx, cy), (ax, ay), 3)
-
-        for (x, y), (dx, dy, age) in water.items():
-            cx, cy = x * TILE + TILE // 2, y * TILE + TILE // 2
-            ex, ey = cx + dx * (TILE // 2 - 3), cy + dy * (TILE // 2 - 3)
-            pygame.draw.circle(screen, (60, 140, 220), (cx, cy), TILE // 3)
-            pygame.draw.line(screen, (200, 230, 255), (cx, cy), (ex, ey), 3)
+        static_sprites.draw(screen)
+        water_sprites.draw(screen)
+        draw_coords(screen, w, h, font)
 
         pygame.display.flip()
 
