@@ -153,7 +153,7 @@ def sync_water_sprites(water_state, water_group, emitter_colors):
         existing[pos].kill()
         existing.pop(pos, None)
 
-    for (x, y), (dx, dy, _age, eid) in water_state.items():
+    for (x, y), (dx, dy, _age, eid, _pref) in water_state.items():
         color = emitter_colors.get(eid, emitter_color_for_id(eid))
         sprite = existing.get((x, y))
         if sprite is None:

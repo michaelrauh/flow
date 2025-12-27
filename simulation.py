@@ -26,11 +26,11 @@ def tick(w, h, walls, emitters, sinks, water):
         if in_bounds(tx, ty, w, h) and (tx, ty) not in walls and (tx, ty) not in occupied and (tx, ty) not in emitter_positions:
             if (tx, ty) in sinks:
                 continue
-            water[(tx, ty)] = (e.dx, e.dy, 0, e.id)
+            water[(tx, ty)] = (e.dx, e.dy, 0, e.id, True)  # start with left-first bias
             occupied.add((tx, ty))
 
     proposals = {}
-    for (x, y), (dx, dy, age, eid) in list(water.items()):
+    for (x, y), (dx, dy, age, eid, prefer_left) in list(water.items()):
         fx, fy = x + dx, y + dy
         forward_blocked = (
             not in_bounds(fx, fy, w, h)
@@ -39,13 +39,14 @@ def tick(w, h, walls, emitters, sinks, water):
         )
 
         if not forward_blocked:
-            proposals[(x, y)] = (fx, fy, dx, dy, eid)
+            proposals[(x, y)] = (fx, fy, dx, dy, eid, prefer_left)
             continue
 
         ldx, ldy = dy, -dx
         rdx, rdy = -dy, dx
+        turn_order = ((ldx, ldy), (rdx, rdy)) if prefer_left else ((rdx, rdy), (ldx, ldy))
         chosen = None
-        for ndx, ndy in ((ldx, ldy), (rdx, rdy)):
+        for ndx, ndy in turn_order:
             nx, ny = x + ndx, y + ndy
             if not in_bounds(nx, ny, w, h):
                 continue
@@ -53,40 +54,40 @@ def tick(w, h, walls, emitters, sinks, water):
                 continue
             if (nx, ny) in emitter_positions:
                 continue
-            chosen = (nx, ny, ndx, ndy, eid)
+            chosen = (nx, ny, ndx, ndy, eid, not prefer_left)  # toggle bias after a collision
             break
         if chosen is None:
-            proposals[(x, y)] = (x, y, dx, dy, eid)
+            proposals[(x, y)] = (x, y, dx, dy, eid, prefer_left)
         else:
             proposals[(x, y)] = chosen
 
     targets = {}
-    for src, (nx, ny, ndx, ndy, eid) in proposals.items():
-        targets.setdefault((nx, ny), []).append((src, ndx, ndy, eid))
+    for src, (nx, ny, ndx, ndy, eid, pref_left) in proposals.items():
+        targets.setdefault((nx, ny), []).append((src, ndx, ndy, eid, pref_left))
 
     inflow_targets = {}
     for tgt, movers in targets.items():
-        incoming_ids = {eid for (src, _, _, eid) in movers if src != tgt}
+        incoming_ids = {eid for (src, _, _, eid, _pref) in movers if src != tgt}
         if incoming_ids:
             inflow_targets[tgt] = incoming_ids
 
     edges = {}
     for tgt, movers in targets.items():
         if tgt in sinks:
-            for (src, ndx, ndy, eid) in movers:
-                edges[src] = (tgt, ndx, ndy, eid)
+            for (src, ndx, ndy, eid, pref_left) in movers:
+                edges[src] = (tgt, ndx, ndy, eid, pref_left)
             continue
         if len(movers) == 1:
-            (src, ndx, ndy, eid) = movers[0]
-            edges[src] = (tgt, ndx, ndy, eid)
+            (src, ndx, ndy, eid, pref_left) = movers[0]
+            edges[src] = (tgt, ndx, ndy, eid, pref_left)
         else:
             def priority(move):
-                src, ndx, ndy, eid = move
-                odx, ody, _, _ = water.get(src, (ndx, ndy, 0, eid))
+                src, ndx, ndy, eid, pref_left = move
+                odx, ody, _, _, _ = water.get(src, (ndx, ndy, 0, eid, pref_left))
                 straight = (ndx, ndy) == (odx, ody)
                 return (0 if straight else 1, src[1], src[0])
-            src, ndx, ndy, eid = min(movers, key=priority)
-            edges[src] = (tgt, ndx, ndy, eid)
+            src, ndx, ndy, eid, pref_left = min(movers, key=priority)
+            edges[src] = (tgt, ndx, ndy, eid, pref_left)
 
     memo = {}
     visiting = set()
@@ -99,7 +100,7 @@ def tick(w, h, walls, emitters, sinks, water):
         if src not in edges:
             memo[src] = False
             return False
-        tgt, _, _, _ = edges[src]
+        tgt, _, _, _, _ = edges[src]
         if tgt in sinks:
             memo[src] = True
             return True
@@ -118,9 +119,9 @@ def tick(w, h, walls, emitters, sinks, water):
         return memo[src]
 
     next_water = {}
-    for (x, y), (dx, dy, age, eid) in water.items():
+    for (x, y), (dx, dy, age, eid, prefer_left) in water.items():
         if (x, y) in edges and move_succeeds((x, y)):
-            (nx, ny), ndx, ndy, neid = edges[(x, y)]
+            (nx, ny), ndx, ndy, neid, npref = edges[(x, y)]
             if (nx, ny) not in sinks:
                 moved = (nx, ny) != (x, y)
                 if moved:
@@ -129,16 +130,16 @@ def tick(w, h, walls, emitters, sinks, water):
                     inflow_ids = inflow_targets.get((nx, ny), set())
                     new_age = 0 if neid in inflow_ids else age + 1
                 if new_age < decay_steps:
-                    next_water[(nx, ny)] = (ndx, ndy, new_age, neid)
+                    next_water[(nx, ny)] = (ndx, ndy, new_age, neid, npref)
         else:
             inflow_ids = inflow_targets.get((x, y), set())
             new_age = 0 if eid in inflow_ids else age + 1
             if new_age < decay_steps:
-                next_water[(x, y)] = (dx, dy, new_age, eid)
+                next_water[(x, y)] = (dx, dy, new_age, eid, prefer_left)
 
     # Prune components not connected to an emitter (4-neighbor connectivity).
     positions_by_eid = {}
-    for (x, y), (_dx, _dy, _age, eid) in next_water.items():
+    for (x, y), (_dx, _dy, _age, eid, _pref) in next_water.items():
         positions_by_eid.setdefault(eid, set()).add((x, y))
 
     reachable = {}
@@ -162,7 +163,7 @@ def tick(w, h, walls, emitters, sinks, water):
 
     filtered = {}
     for (x, y), val in next_water.items():
-        _dx, _dy, _age, eid = val
+        _dx, _dy, _age, eid, _pref = val
         if (x, y) in reachable.get(eid, set()):
             filtered[(x, y)] = val
 
@@ -178,7 +179,7 @@ def render_ascii(w, h, walls, emitters, sinks, water, show_coords=False):
         grid[y][x] = SINK
     for e in emitters:
         grid[e.y][e.x] = DIR_TO_CHAR.get((e.dx, e.dy), "E")
-    for (x, y), (dx, dy, age, _eid) in water.items():
+    for (x, y), (dx, dy, age, _eid, _pref) in water.items():
         if grid[y][x] in f"#{SINK}":
             continue
         grid[y][x] = WATER_DIR_CHAR.get((dx, dy), "~")
