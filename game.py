@@ -10,9 +10,10 @@ from graphics import (
     sync_water_sprites,
 )
 from levels import DIRS, DIR_TO_CHAR, Emitter, LEVEL_ORDER, LEVELS, get_level, parse_level
-from simulation import STEP_MS, render_ascii, tick
+from simulation import STEP_MS, clear_sink_claims, render_ascii, tick
 
 FPS = 60
+GAME_SPEED = 5.0  # multiplier on simulation speed in the interactive view
 
 
 def run_game(initial_level="empty"):
@@ -69,6 +70,7 @@ def run_game(initial_level="empty"):
     def load_level(name):
         nonlocal w, h, walls, emitters, sinks, emitter_positions, static_sprites, wall_lookup, sink_lookup, emitter_lookup, emitter_colors, current_level, screen, next_emitter_id
         current_level = name
+        clear_sink_claims()
         level_lines = get_level(name)
         w, h, walls, emitters, sinks = parse_level(level_lines)
         emitter_positions = {(e.x, e.y) for e in emitters}
@@ -85,6 +87,10 @@ def run_game(initial_level="empty"):
     running = True
     paused = False
 
+    def clear_water_state():
+        water.clear()
+        water_sprites.empty()
+
     def toggle_wall(gx, gy):
         if (gx, gy) in emitter_positions or (gx, gy) in sinks:
             return
@@ -93,13 +99,13 @@ def run_game(initial_level="empty"):
             sprite = wall_lookup.pop((gx, gy), None)
             if sprite:
                 sprite.kill()
-            water.pop((gx, gy), None)
+            clear_water_state()
         else:
             walls.add((gx, gy))
             sprite = WallSprite(gx, gy)
             wall_lookup[(gx, gy)] = sprite
             static_sprites.add(sprite)
-            water.pop((gx, gy), None)
+            clear_water_state()
 
     def place_wall(gx, gy):
         if (gx, gy) in walls or (gx, gy) in emitter_positions or (gx, gy) in sinks:
@@ -108,7 +114,7 @@ def run_game(initial_level="empty"):
         sprite = WallSprite(gx, gy)
         wall_lookup[(gx, gy)] = sprite
         static_sprites.add(sprite)
-        water.pop((gx, gy), None)
+        clear_water_state()
 
     def toggle_sink(gx, gy):
         if (gx, gy) in emitter_positions or (gx, gy) in walls:
@@ -118,13 +124,13 @@ def run_game(initial_level="empty"):
             sprite = sink_lookup.pop((gx, gy), None)
             if sprite:
                 sprite.kill()
-            water.pop((gx, gy), None)
+            clear_water_state()
         else:
             sinks.add((gx, gy))
             sprite = SinkSprite(gx, gy)
             sink_lookup[(gx, gy)] = sprite
             static_sprites.add(sprite)
-            water.pop((gx, gy), None)
+            clear_water_state()
 
     def place_sink(gx, gy):
         if (gx, gy) in sinks or (gx, gy) in emitter_positions or (gx, gy) in walls:
@@ -133,7 +139,7 @@ def run_game(initial_level="empty"):
         sprite = SinkSprite(gx, gy)
         sink_lookup[(gx, gy)] = sprite
         static_sprites.add(sprite)
-        water.pop((gx, gy), None)
+        clear_water_state()
 
     def toggle_emitter(gx, gy):
         nonlocal next_emitter_id
@@ -146,7 +152,7 @@ def run_game(initial_level="empty"):
             emitters[:] = [e for e in emitters if e.id != emitter.id]
             emitter_positions.discard((gx, gy))
             emitter_colors.pop(emitter.id, None)
-            water.pop((gx, gy), None)
+            clear_water_state()
         else:
             dx, dy = emitter_dirs[dir_index]
             emitter = Emitter(next_emitter_id, gx, gy, dx, dy)
@@ -158,7 +164,7 @@ def run_game(initial_level="empty"):
             sprite = EmitterSprite(emitter, color)
             emitter_lookup[(gx, gy)] = (emitter, sprite)
             static_sprites.add(sprite)
-            water.pop((gx, gy), None)
+            clear_water_state()
 
     def place_emitter(gx, gy):
         nonlocal next_emitter_id
@@ -174,7 +180,7 @@ def run_game(initial_level="empty"):
         sprite = EmitterSprite(emitter, color)
         emitter_lookup[(gx, gy)] = (emitter, sprite)
         static_sprites.add(sprite)
-        water.pop((gx, gy), None)
+        clear_water_state()
 
     def rotate_emitter_dir():
         nonlocal dir_index
@@ -183,7 +189,7 @@ def run_game(initial_level="empty"):
 
     while running:
         dt = clock.tick(FPS)
-        step_acc += dt
+        step_acc += dt * GAME_SPEED
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:

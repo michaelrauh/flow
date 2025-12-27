@@ -1,10 +1,11 @@
 import math
 
 from levels import get_level, parse_level
-from simulation import STEP_MS, in_bounds, render_ascii, tick
+from simulation import STEP_MS, clear_sink_claims, in_bounds, render_ascii, tick
 
 
 def run_script(script_text, default_level_name="turn"):
+    clear_sink_claims()
     level_lines = get_level(default_level_name)
     w, h, walls, emitters, sinks = parse_level(level_lines)
     water = {}

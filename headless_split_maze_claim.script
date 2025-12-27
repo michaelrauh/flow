@@ -1,0 +1,4 @@
+level split_maze_claim
+wait_ms 10000
+remove 17,10
+wait_ms 10000

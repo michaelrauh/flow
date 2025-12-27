@@ -1,0 +1,6 @@
+level split_maze_claim
+# initial state
+wait_ms 10000
+# remove one wall to open both sinks
+remove 17,10
+wait_ms 10000

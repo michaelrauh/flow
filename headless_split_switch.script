@@ -1,0 +1,6 @@
+level split_switch
+# let it jam into the left sink
+wait_ms 3000
+# remove the wall at (8,7) to open the right sink
+remove 8,7
+wait_ms 3000

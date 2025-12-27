@@ -4,6 +4,8 @@ from levels import DIR_TO_CHAR, SINK, parse_level
 
 STEP_MS = 120
 STATIONARY_DECAY_MS = 250
+# sink_claims[(x,y)] = emitter_id that currently owns the sink
+sink_claims = {}
 WATER_DIR_CHAR = {
     (0, -1): "U",
     (1, 0): "R",
@@ -12,11 +14,17 @@ WATER_DIR_CHAR = {
 }
 
 
+def clear_sink_claims():
+    sink_claims.clear()
+
+
 def in_bounds(x, y, w, h):
     return 0 <= x < w and 0 <= y < h
 
 
 def tick(w, h, walls, emitters, sinks, water):
+    if not water:
+        clear_sink_claims()
     decay_steps = max(1, int(math.ceil(STATIONARY_DECAY_MS / float(STEP_MS))))
     occupied = set(water.keys())
     emitter_positions = {(e.x, e.y) for e in emitters}
@@ -29,6 +37,8 @@ def tick(w, h, walls, emitters, sinks, water):
             water[(tx, ty)] = (e.dx, e.dy, 0, e.id, True)  # start with left-first bias
             occupied.add((tx, ty))
 
+    prev_owner = {pos: eid for pos, (_dx, _dy, _age, eid, _pref) in water.items()}
+
     proposals = {}
     for (x, y), (dx, dy, age, eid, prefer_left) in list(water.items()):
         fx, fy = x + dx, y + dy
@@ -37,6 +47,11 @@ def tick(w, h, walls, emitters, sinks, water):
             or (fx, fy) in walls
             or (fx, fy) in emitter_positions
         )
+
+        if (fx, fy) in sinks:
+            owner = sink_claims.get((fx, fy))
+            if owner is not None and owner != eid:
+                forward_blocked = True
 
         if not forward_blocked:
             proposals[(x, y)] = (fx, fy, dx, dy, eid, prefer_left)
@@ -54,6 +69,10 @@ def tick(w, h, walls, emitters, sinks, water):
                 continue
             if (nx, ny) in emitter_positions:
                 continue
+            if (nx, ny) in sinks:
+                owner = sink_claims.get((nx, ny))
+                if owner is not None and owner != eid:
+                    continue
             chosen = (nx, ny, ndx, ndy, eid, not prefer_left)  # toggle bias after a collision
             break
         if chosen is None:
@@ -74,8 +93,19 @@ def tick(w, h, walls, emitters, sinks, water):
     edges = {}
     for tgt, movers in targets.items():
         if tgt in sinks:
-            for (src, ndx, ndy, eid, pref_left) in movers:
-                edges[src] = (tgt, ndx, ndy, eid, pref_left)
+            if len(movers) == 1:
+                src, ndx, ndy, eid, pref_left = movers[0]
+            else:
+                src, ndx, ndy, eid, pref_left = min(
+                    movers,
+                    key=lambda m: (
+                        0 if sink_claims.get(tgt) == m[3] else 1,
+                        m[0][1],
+                        m[0][0],
+                    ),
+                )
+            sink_claims[tgt] = eid
+            edges[src] = (tgt, ndx, ndy, eid, pref_left)
             continue
         if len(movers) == 1:
             (src, ndx, ndy, eid, pref_left) = movers[0]
@@ -85,7 +115,8 @@ def tick(w, h, walls, emitters, sinks, water):
                 src, ndx, ndy, eid, pref_left = move
                 odx, ody, _, _, _ = water.get(src, (ndx, ndy, 0, eid, pref_left))
                 straight = (ndx, ndy) == (odx, ody)
-                return (0 if straight else 1, src[1], src[0])
+                owner_bonus = 0 if prev_owner.get(tgt) == eid else 1
+                return (owner_bonus, 0 if straight else 1, src[1], src[0])
             src, ndx, ndy, eid, pref_left = min(movers, key=priority)
             edges[src] = (tgt, ndx, ndy, eid, pref_left)
 
@@ -195,6 +226,7 @@ def render_ascii(w, h, walls, emitters, sinks, water, show_coords=False):
 
 
 def run_headless(duration_ms, level_lines):
+    clear_sink_claims()
     w, h, walls, emitters, sinks = parse_level(level_lines)
     water = {}
     steps = max(1, int(math.ceil(duration_ms / float(STEP_MS))))
