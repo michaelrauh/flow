@@ -1,0 +1,97 @@
+from dataclasses import dataclass
+
+LEVEL_BACKUP = [
+    "####################",
+    "#..>...............#",
+    "#..####..#####..#..#",
+    "#.......#.....#..#..#",
+    "#..#....#..#..#..#..#",
+    "#..#....#..#..#..#..#",
+    "#..#...............<#",
+    "####################",
+]
+
+LEVEL_DENSE_WIDE = [
+    "############################",
+    "#>...............#........S#",
+    "#>........................S#",
+    "############################",
+]
+
+LEVEL_DENSE_TURN = [
+    "############################",
+    "#>........................S#",
+    "#..........................#",
+    "#..........................#",
+    "#S.........................#",
+    "#..........................#",
+    "#.........^................#",
+    "############################",
+]
+
+LEVEL_CASCADE = [
+    "####################################",
+    "#..S..............v.............S..#",
+    "#....>.##.................#v.......#",
+    "#......#..................#........#",
+    "#..................................#",
+    "#..........###.......####..........#",
+    "#..........#............#..........#",
+    "#S.........#............#.........S#",
+    "#..........###.......####..........#",
+    "#..................................#",
+    "#..................................#",
+    "#......#^.................##..<....#",
+    "#..S...#..........^.......#.....S..#",
+    "####################################",
+]
+
+LEVELS = {
+    "backup": LEVEL_BACKUP,
+    "wide": LEVEL_DENSE_WIDE,
+    "turn": LEVEL_DENSE_TURN,
+    "cascade": LEVEL_CASCADE,
+}
+LEVEL_ORDER = ["turn", "backup", "wide", "cascade"]
+
+DIRS = {
+    "^": (0, -1),
+    ">": (1, 0),
+    "v": (0, 1),
+    "<": (-1, 0),
+}
+DIR_TO_CHAR = {v: k for k, v in DIRS.items()}
+SINK = "S"
+
+
+@dataclass(frozen=True)
+class Emitter:
+    id: int
+    x: int
+    y: int
+    dx: int
+    dy: int
+
+
+def parse_level(lines):
+    h = len(lines)
+    w = max(len(r) for r in lines)
+    walls = set()
+    emitters = []
+    sinks = set()
+    for y, row in enumerate(lines):
+        for x, ch in enumerate(row):
+            if ch == "#":
+                walls.add((x, y))
+            elif ch in DIRS:
+                dx, dy = DIRS[ch]
+                emitters.append(Emitter(len(emitters), x, y, dx, dy))
+            elif ch == SINK:
+                sinks.add((x, y))
+    return w, h, walls, emitters, sinks
+
+
+def get_level(name):
+    if name in LEVELS:
+        return LEVELS[name]
+    raise ValueError(f"Unknown level '{name}'. Known levels: {', '.join(sorted(LEVELS))}")
