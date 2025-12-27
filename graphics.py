@@ -102,15 +102,22 @@ class WaterSprite(TileSprite):
 def build_static_sprites(walls, sinks, emitters):
     static_sprites = pygame.sprite.Group()
     wall_lookup = {}
+    sink_lookup = {}
+    emitter_lookup = {}
+
     for (x, y) in walls:
         sprite = WallSprite(x, y)
         wall_lookup[(x, y)] = sprite
         static_sprites.add(sprite)
     for (x, y) in sinks:
-        static_sprites.add(SinkSprite(x, y))
+        sprite = SinkSprite(x, y)
+        sink_lookup[(x, y)] = sprite
+        static_sprites.add(sprite)
     for emitter in emitters:
-        static_sprites.add(EmitterSprite(emitter))
-    return static_sprites, wall_lookup
+        sprite = EmitterSprite(emitter)
+        emitter_lookup[(emitter.x, emitter.y)] = (emitter, sprite)
+        static_sprites.add(sprite)
+    return static_sprites, wall_lookup, sink_lookup, emitter_lookup
 
 
 def sync_water_sprites(water_state, water_group):

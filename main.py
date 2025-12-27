@@ -15,7 +15,7 @@ def parse_args():
     )
     parser.add_argument(
         "--level",
-        default="turn",
+        default="empty",
         help="Level to load (choices: {}).".format(", ".join(sorted(LEVELS))),
     )
     parser.add_argument(
