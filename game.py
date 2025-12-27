@@ -33,7 +33,7 @@ def run_game(initial_level="empty"):
     dir_index = 1 if (1, 0) in emitter_dirs else 0  # default to right if present
     placement_mode = "wall"  # wall | sink | emitter
     instructions = [
-        "Space: pause/resume | N: step | R: reset water | P: print map | 1-9: change level",
+        "Space: pause/resume | N: step | R: reset water | P: print map | M: print map (no water) | 1-9: change level",
         "Modes: W wall | S sink | E emitter (tap again to rotate) | Left-click place/remove | Right-click clear water",
     ]
     header_font = pygame.font.SysFont(None, 16)
@@ -101,6 +101,15 @@ def run_game(initial_level="empty"):
             static_sprites.add(sprite)
             water.pop((gx, gy), None)
 
+    def place_wall(gx, gy):
+        if (gx, gy) in walls or (gx, gy) in emitter_positions or (gx, gy) in sinks:
+            return
+        walls.add((gx, gy))
+        sprite = WallSprite(gx, gy)
+        wall_lookup[(gx, gy)] = sprite
+        static_sprites.add(sprite)
+        water.pop((gx, gy), None)
+
     def toggle_sink(gx, gy):
         if (gx, gy) in emitter_positions or (gx, gy) in walls:
             return
@@ -116,6 +125,15 @@ def run_game(initial_level="empty"):
             sink_lookup[(gx, gy)] = sprite
             static_sprites.add(sprite)
             water.pop((gx, gy), None)
+
+    def place_sink(gx, gy):
+        if (gx, gy) in sinks or (gx, gy) in emitter_positions or (gx, gy) in walls:
+            return
+        sinks.add((gx, gy))
+        sprite = SinkSprite(gx, gy)
+        sink_lookup[(gx, gy)] = sprite
+        static_sprites.add(sprite)
+        water.pop((gx, gy), None)
 
     def toggle_emitter(gx, gy):
         nonlocal next_emitter_id
@@ -141,6 +159,22 @@ def run_game(initial_level="empty"):
             emitter_lookup[(gx, gy)] = (emitter, sprite)
             static_sprites.add(sprite)
             water.pop((gx, gy), None)
+
+    def place_emitter(gx, gy):
+        nonlocal next_emitter_id
+        if (gx, gy) in walls or (gx, gy) in sinks or (gx, gy) in emitter_positions:
+            return
+        dx, dy = emitter_dirs[dir_index]
+        emitter = Emitter(next_emitter_id, gx, gy, dx, dy)
+        next_emitter_id += 1
+        emitters.append(emitter)
+        emitter_positions.add((gx, gy))
+        color = emitter_color_for_id(emitter.id)
+        emitter_colors[emitter.id] = color
+        sprite = EmitterSprite(emitter, color)
+        emitter_lookup[(gx, gy)] = (emitter, sprite)
+        static_sprites.add(sprite)
+        water.pop((gx, gy), None)
 
     def rotate_emitter_dir():
         nonlocal dir_index
@@ -174,6 +208,8 @@ def run_game(initial_level="empty"):
                     else:
                         placement_mode = "emitter"
                         update_caption()
+                elif event.key == pygame.K_m:
+                    print(render_ascii(w, h, walls, emitters, sinks, {}, show_coords=True))
                 elif event.key == pygame.K_p:
                     print(render_ascii(w, h, walls, emitters, sinks, water, show_coords=True))
                 elif event.key in level_hotkeys:
@@ -193,6 +229,23 @@ def run_game(initial_level="empty"):
                     elif placement_mode == "emitter":
                         toggle_emitter(gx, gy)
                 elif event.button == 3:
+                    water.pop((gx, gy), None)
+            elif event.type == pygame.MOUSEMOTION:
+                mx, my = pygame.mouse.get_pos()
+                if my < header_height:
+                    continue
+                gx, gy = mx // TILE, (my - header_height) // TILE
+                if not (0 <= gx < w and 0 <= gy < h):
+                    continue
+                buttons = pygame.mouse.get_pressed()
+                if buttons[0]:
+                    if placement_mode == "wall":
+                        place_wall(gx, gy)
+                    elif placement_mode == "sink":
+                        place_sink(gx, gy)
+                    elif placement_mode == "emitter":
+                        place_emitter(gx, gy)
+                elif buttons[2]:
                     water.pop((gx, gy), None)
 
         if not paused:
