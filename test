@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Run the bundled unit tests.
+cd -- "$(dirname "$0")"
+exec python3 -m unittest
