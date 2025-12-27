@@ -37,6 +37,23 @@ LEVEL_DENSE_TURN = [
     "############################",
 ]
 
+LEVEL_CASCADE = [
+    "####################################",
+    "#..S..............v.............S..#",
+    "#....>.##.................#v.......#",
+    "#......#..................#........#",
+    "#..................................#",
+    "#..........###.......####..........#",
+    "#..........#............#..........#",
+    "#S.........#............#.........S#",
+    "#..........###.......####..........#",
+    "#..................................#",
+    "#..................................#",
+    "#......#^.................##..<....#",
+    "#..S...#..........^.......#.....S..#",
+    "####################################",
+]
+
 # LEVEL_MAZE = [
 #     "############################",
 #     "#>..#....#....#....#....#..#",
@@ -57,7 +74,9 @@ LEVELS = {
     "backup": LEVEL_BACKUP,
     "wide": LEVEL_DENSE_WIDE,
     "turn": LEVEL_DENSE_TURN,
+    "cascade": LEVEL_CASCADE,
 }
+LEVEL_ORDER = ["turn", "backup", "wide", "cascade"]
 
 DIRS = {
     "^": (0, -1),
@@ -490,8 +509,6 @@ def main():
     )
     args = parser.parse_args()
 
-    level_lines = get_level(args.level)
-
     script_text = None
     if args.script:
         script_text = args.script
@@ -500,19 +517,39 @@ def main():
             script_text = fh.read()
 
     if args.headless:
-        run_headless(args.duration_ms, level_lines, script=script_text, level_name=args.level)
+        run_headless(args.duration_ms, get_level(args.level), script=script_text, level_name=args.level)
         return
 
     pygame.init()
-    w, h, walls, emitters, sinks = parse_level(level_lines)
-    screen = pygame.display.set_mode((w * TILE, h * TILE))
+    level_order = [name for name in LEVEL_ORDER if name in LEVELS] + [name for name in LEVELS if name not in LEVEL_ORDER]
+    level_hotkeys = {getattr(pygame, f"K_{idx+1}"): name for idx, name in enumerate(level_order[:9])}
+
+    current_level = args.level
+    w = h = 0
+    walls = set()
+    emitters = []
+    sinks = set()
+    emitter_positions = set()
+    static_sprites = pygame.sprite.Group()
+    wall_lookup = {}
+    water = {}
+    water_sprites = pygame.sprite.Group()
+    screen = None
     font = pygame.font.SysFont(None, 14)
     clock = pygame.time.Clock()
-    emitter_positions = {(e.x, e.y) for e in emitters}
-    static_sprites, wall_lookup = build_static_sprites(walls, sinks, emitters)
-    water_sprites = pygame.sprite.Group()
 
-    water = {}
+    def load_level(name):
+        nonlocal w, h, walls, emitters, sinks, emitter_positions, static_sprites, wall_lookup, current_level, screen
+        current_level = name
+        level_lines = get_level(name)
+        w, h, walls, emitters, sinks = parse_level(level_lines)
+        emitter_positions = {(e.x, e.y) for e in emitters}
+        static_sprites, wall_lookup = build_static_sprites(walls, sinks, emitters)
+        water.clear()
+        water_sprites.empty()
+        screen = pygame.display.set_mode((w * TILE, h * TILE))
+
+    load_level(current_level)
     step_acc = 0
     running = True
     paused = False
@@ -532,6 +569,8 @@ def main():
                 elif event.key == pygame.K_r:
                     water.clear()
                     water_sprites.empty()
+                elif event.key in level_hotkeys:
+                    load_level(level_hotkeys[event.key])
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 mx, my = pygame.mouse.get_pos()
                 gx, gy = mx // TILE, my // TILE
