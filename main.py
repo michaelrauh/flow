@@ -31,9 +31,9 @@ LEVEL_DENSE_TURN = [
     "#>........................S#",
     "#..........................#",
     "#..........................#",
+    "#S.........................#",
     "#..........................#",
-    "#..........................#",
-    "#.........^...............S#",
+    "#.........^................#",
     "############################",
 ]
 
@@ -229,10 +229,11 @@ def in_bounds(x, y, w, h):
 def tick(w, h, walls, emitters, sinks, water):
     decay_steps = max(1, int(math.ceil(STATIONARY_DECAY_MS / float(STEP_MS))))
     occupied = set(water.keys())
+    emitter_positions = {(e.x, e.y) for e in emitters}
 
     for e in emitters:
         tx, ty = e.x + e.dx, e.y + e.dy
-        if in_bounds(tx, ty, w, h) and (tx, ty) not in walls and (tx, ty) not in occupied:
+        if in_bounds(tx, ty, w, h) and (tx, ty) not in walls and (tx, ty) not in occupied and (tx, ty) not in emitter_positions:
             if (tx, ty) in sinks:
                 continue
             water[(tx, ty)] = (e.dx, e.dy, 0, e.id)
@@ -244,6 +245,7 @@ def tick(w, h, walls, emitters, sinks, water):
         forward_blocked = (
             not in_bounds(fx, fy, w, h)
             or (fx, fy) in walls
+            or (fx, fy) in emitter_positions
         )
 
         if not forward_blocked:
@@ -258,6 +260,8 @@ def tick(w, h, walls, emitters, sinks, water):
             if not in_bounds(nx, ny, w, h):
                 continue
             if (nx, ny) in walls:
+                continue
+            if (nx, ny) in emitter_positions:
                 continue
             chosen = (nx, ny, ndx, ndy, eid)
             break

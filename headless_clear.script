@@ -1,4 +1,4 @@
 # Add a wall above the bottom emitter to cut inflow, wait, and the jam should clear.
 level turn
-add 10,4
+add 10,3
 wait_ms 10000
