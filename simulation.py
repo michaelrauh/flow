@@ -136,8 +136,38 @@ def tick(w, h, walls, emitters, sinks, water):
             if new_age < decay_steps:
                 next_water[(x, y)] = (dx, dy, new_age, eid)
 
+    # Prune components not connected to an emitter (4-neighbor connectivity).
+    positions_by_eid = {}
+    for (x, y), (_dx, _dy, _age, eid) in next_water.items():
+        positions_by_eid.setdefault(eid, set()).add((x, y))
+
+    reachable = {}
+    for e in emitters:
+        seen = reachable.setdefault(e.id, set())
+        positions = list(positions_by_eid.get(e.id, set()))
+        if not positions:
+            continue
+        min_dist = min(abs(nx - e.x) + abs(ny - e.y) for (nx, ny) in positions)
+        seeds = [(nx, ny) for (nx, ny) in positions if abs(nx - e.x) + abs(ny - e.y) == min_dist]
+        stack = list(seeds)
+        while stack:
+            pos = stack.pop()
+            if pos in seen:
+                continue
+            seen.add(pos)
+            x, y = pos
+            for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+                if (nx, ny) in positions_by_eid.get(e.id, set()):
+                    stack.append((nx, ny))
+
+    filtered = {}
+    for (x, y), val in next_water.items():
+        _dx, _dy, _age, eid = val
+        if (x, y) in reachable.get(eid, set()):
+            filtered[(x, y)] = val
+
     water.clear()
-    water.update(next_water)
+    water.update(filtered)
 
 
 def render_ascii(w, h, walls, emitters, sinks, water, show_coords=False):
