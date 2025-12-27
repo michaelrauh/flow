@@ -28,13 +28,25 @@ def run_game(initial_level="empty"):
 
     pygame.init()
     level_order = [name for name in LEVEL_ORDER if name in LEVELS] + [name for name in LEVELS if name not in LEVEL_ORDER]
-    level_hotkeys = {getattr(pygame, f"K_{idx+1}"): name for idx, name in enumerate(level_order[:9])}
+    number_keys = [
+        pygame.K_1,
+        pygame.K_2,
+        pygame.K_3,
+        pygame.K_4,
+        pygame.K_5,
+        pygame.K_6,
+        pygame.K_7,
+        pygame.K_8,
+        pygame.K_9,
+        pygame.K_0,
+    ]
+    level_hotkeys = {key: name for key, name in zip(number_keys, level_order)}
 
     emitter_dirs = list(DIRS.values())
     dir_index = 1 if (1, 0) in emitter_dirs else 0  # default to right if present
     placement_mode = "wall"  # wall | sink | emitter
     instructions = [
-        "Space: pause/resume | N: step | R: reset water | P: print map | M: print map (no water) | 1-9: change level",
+        "Space: pause/resume | N: step | R: reset water | P: print map | M: print map (no water) | 1-9,0: change level",
         "Modes: W wall | S sink | E emitter (tap again to rotate) | Left-click place/remove | Right-click clear water",
     ]
     header_font = pygame.font.SysFont(None, 16)
