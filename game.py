@@ -2,7 +2,7 @@ import pygame
 
 from graphics import TILE, WallSprite, build_static_sprites, sync_water_sprites
 from levels import LEVEL_ORDER, LEVELS, get_level, parse_level
-from simulation import STEP_MS, tick
+from simulation import STEP_MS, render_ascii, tick
 
 FPS = 60
 
@@ -66,6 +66,8 @@ def run_game(initial_level="turn"):
                 elif event.key == pygame.K_r:
                     water.clear()
                     water_sprites.empty()
+                elif event.key == pygame.K_p:
+                    print(render_ascii(w, h, walls, emitters, sinks, water, show_coords=True))
                 elif event.key in level_hotkeys:
                     load_level(level_hotkeys[event.key])
             elif event.type == pygame.MOUSEBUTTONDOWN:
