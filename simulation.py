@@ -4,6 +4,12 @@ from levels import DIR_TO_CHAR, SINK, parse_level
 
 STEP_MS = 120
 STATIONARY_DECAY_MS = 250
+WATER_DIR_CHAR = {
+    (0, -1): "U",
+    (1, 0): "R",
+    (0, 1): "D",
+    (-1, 0): "L",
+}
 
 
 def in_bounds(x, y, w, h):
@@ -145,7 +151,7 @@ def render_ascii(w, h, walls, emitters, sinks, water, show_coords=False):
     for (x, y), (dx, dy, age, _eid) in water.items():
         if grid[y][x] in f"#{SINK}":
             continue
-        grid[y][x] = DIR_TO_CHAR.get((dx, dy), "~")
+        grid[y][x] = WATER_DIR_CHAR.get((dx, dy), "~")
     if not show_coords:
         return "\n".join("".join(row) for row in grid)
 
