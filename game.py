@@ -6,6 +6,7 @@ from graphics import (
     SinkSprite,
     WallSprite,
     build_static_sprites,
+    emitter_color_for_id,
     sync_water_sprites,
 )
 from levels import DIRS, DIR_TO_CHAR, Emitter, LEVEL_ORDER, LEVELS, get_level, parse_level
@@ -48,6 +49,7 @@ def run_game(initial_level="empty"):
     wall_lookup = {}
     sink_lookup = {}
     emitter_lookup = {}
+    emitter_colors = {}
     water = {}
     water_sprites = pygame.sprite.Group()
     screen = None
@@ -65,12 +67,13 @@ def run_game(initial_level="empty"):
         )
 
     def load_level(name):
-        nonlocal w, h, walls, emitters, sinks, emitter_positions, static_sprites, wall_lookup, sink_lookup, emitter_lookup, current_level, screen, next_emitter_id
+        nonlocal w, h, walls, emitters, sinks, emitter_positions, static_sprites, wall_lookup, sink_lookup, emitter_lookup, emitter_colors, current_level, screen, next_emitter_id
         current_level = name
         level_lines = get_level(name)
         w, h, walls, emitters, sinks = parse_level(level_lines)
         emitter_positions = {(e.x, e.y) for e in emitters}
-        static_sprites, wall_lookup, sink_lookup, emitter_lookup = build_static_sprites(walls, sinks, emitters)
+        emitter_colors = {e.id: emitter_color_for_id(e.id) for e in emitters}
+        static_sprites, wall_lookup, sink_lookup, emitter_lookup = build_static_sprites(walls, sinks, emitters, emitter_colors)
         next_emitter_id = (max((e.id for e in emitters), default=-1) + 1)
         water.clear()
         water_sprites.empty()
@@ -124,6 +127,7 @@ def run_game(initial_level="empty"):
             sprite.kill()
             emitters[:] = [e for e in emitters if e.id != emitter.id]
             emitter_positions.discard((gx, gy))
+            emitter_colors.pop(emitter.id, None)
             water.pop((gx, gy), None)
         else:
             dx, dy = emitter_dirs[dir_index]
@@ -131,7 +135,9 @@ def run_game(initial_level="empty"):
             next_emitter_id += 1
             emitters.append(emitter)
             emitter_positions.add((gx, gy))
-            sprite = EmitterSprite(emitter)
+            color = emitter_color_for_id(emitter.id)
+            emitter_colors[emitter.id] = color
+            sprite = EmitterSprite(emitter, color)
             emitter_lookup[(gx, gy)] = (emitter, sprite)
             static_sprites.add(sprite)
             water.pop((gx, gy), None)
@@ -194,7 +200,7 @@ def run_game(initial_level="empty"):
                 step_acc -= STEP_MS
                 tick(w, h, walls, emitters, sinks, water)
 
-        sync_water_sprites(water, water_sprites)
+        sync_water_sprites(water, water_sprites, emitter_colors)
 
         screen.fill((20, 20, 20))
         pygame.draw.rect(screen, (30, 30, 30), (0, 0, w * TILE, header_height))
