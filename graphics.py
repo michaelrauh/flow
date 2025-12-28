@@ -9,9 +9,10 @@ from typedefs import Coord
 TILE = 24
 
 _WALL_SURFACE = None
-_SINK_SURFACE = None
+_SINK_SURFACE_CACHE = {}
 _EMITTER_SURFACE_CACHE = {}
 _WATER_SURFACE_CACHE = {}
+_DEFAULT_SINK_DOT = (20, 10, 10)
 
 
 def _make_surface(color):
@@ -46,14 +47,15 @@ def get_wall_surface():
     return _WALL_SURFACE
 
 
-def get_sink_surface():
-    global _SINK_SURFACE
-    if _SINK_SURFACE is None:
+def get_sink_surface(dot_color=None):
+    color = dot_color if dot_color is not None else _DEFAULT_SINK_DOT
+    surface = _SINK_SURFACE_CACHE.get(color)
+    if surface is None:
         surface = _make_surface((70, 30, 30))
         center = (TILE // 2, TILE // 2)
-        pygame.draw.circle(surface, (20, 10, 10), center, TILE // 4)
-        _SINK_SURFACE = surface
-    return _SINK_SURFACE
+        pygame.draw.circle(surface, color, center, TILE // 4)
+        _SINK_SURFACE_CACHE[color] = surface
+    return surface
 
 
 def get_emitter_surface(dx, dy, color):
@@ -101,7 +103,14 @@ class WallSprite(TileSprite):
 
 class SinkSprite(TileSprite):
     def __init__(self, x, y):
+        self.dot_color = None
         super().__init__(x, y, get_sink_surface())
+
+    def set_dot_color(self, dot_color):
+        if dot_color == self.dot_color:
+            return
+        self.dot_color = dot_color
+        self.image = get_sink_surface(dot_color)
 
 
 class EmitterSprite(TileSprite):
@@ -169,3 +178,12 @@ def sync_water_sprites(
             water_group.add(WaterSprite(x, y, dx, dy, color))
         else:
             sprite.update_state(x, y, dx, dy, color)
+
+
+def sync_sink_sprites(sink_lookup, sink_claims, emitter_colors):
+    for pos, sprite in sink_lookup.items():
+        owner = sink_claims.get(pos)
+        dot_color = None
+        if owner is not None:
+            dot_color = emitter_colors.get(owner, emitter_color_for_id(owner))
+        sprite.set_dot_color(dot_color)

@@ -8,6 +8,7 @@ from graphics import (
     WallSprite,
     build_static_sprites,
     emitter_color_for_id,
+    sync_sink_sprites,
     sync_water_sprites,
 )
 from levels import DIRS, DIR_TO_CHAR, Emitter, LEVEL_ORDER, LEVELS, get_level, parse_level
@@ -185,6 +186,9 @@ class ViewContext:
             _emitter, sprite = existing
             sprite.kill()
 
+    def sync_sinks(self, sink_claims, emitter_colors):
+        sync_sink_sprites(self.sink_lookup, sink_claims, emitter_colors)
+
 
 class WaterState:
     def __init__(self):
@@ -193,6 +197,7 @@ class WaterState:
 
     def clear(self):
         self.sim_state.clear_water()
+        self.sim_state.clear_sink_claims()
         self.water_sprites.empty()
 
     def clear_at(self, gx, gy):
@@ -237,7 +242,8 @@ def run_game(initial_level: str = "empty") -> None:
     ]
     header_font = pygame.font.SysFont(None, 16)
     header_pad = 4
-    header_height = header_font.get_linesize() * len(instructions) + header_pad * 2
+    extra_status_lines = 1
+    header_height = header_font.get_linesize() * (len(instructions) + extra_status_lines) + header_pad * 2
     font = pygame.font.SysFont(None, 14)
     clock = pygame.time.Clock()
 
@@ -257,8 +263,12 @@ def run_game(initial_level: str = "empty") -> None:
             f"Flow - mode: {input_mode.placement_mode} (Emitter dir: {input_mode.dir_label()})"
         )
 
+    def sync_sinks():
+        view.sync_sinks(water_state.sim_state.sink_claims, level_state.emitter_colors)
+
     def clear_water_state():
         water_state.clear()
+        sync_sinks()
 
     def reset_sink_claims():
         water_state.sim_state.clear_sink_claims()
@@ -319,6 +329,12 @@ def run_game(initial_level: str = "empty") -> None:
 
     def sync_water():
         water_state.sync(level_state)
+        sync_sinks()
+
+    def all_sinks_saturated() -> bool:
+        if not level_state.sinks:
+            return False
+        return all(sink in water_state.sim_state.sink_claims for sink in level_state.sinks)
 
     update_caption()
 
@@ -406,11 +422,15 @@ def run_game(initial_level: str = "empty") -> None:
 
         sync_water()
 
+        win = all_sinks_saturated()
         screen = view.screen
         screen.fill((20, 20, 20))
         pygame.draw.rect(screen, (30, 30, 30), (0, 0, level_state.w * TILE, header_height))
-        for idx, line in enumerate(instructions):
-            text = header_font.render(line, True, (200, 200, 200))
+        win_text = "All sinks saturated! You win!" if win else ""
+        header_lines = instructions + [win_text]
+        for idx, line in enumerate(header_lines):
+            color = (120, 220, 120) if line and idx == len(header_lines) - 1 else (200, 200, 200)
+            text = header_font.render(line, True, color)
             screen.blit(text, (4, header_pad + idx * header_font.get_linesize()))
 
         grid_surface = screen.subsurface((0, header_height, level_state.w * TILE, level_state.h * TILE))
