@@ -210,7 +210,7 @@ class WaterState:
         sync_water_sprites(self.sim_state.water, self.water_sprites, level.emitter_colors)
 
 
-def run_game(initial_level: str = "empty") -> None:
+def run_game(initial_level: str = LEVEL_ORDER[0]) -> None:
     def draw_coords(surface, w, h, font):
         color = (140, 140, 140)
         for x in range(w):
@@ -221,8 +221,8 @@ def run_game(initial_level: str = "empty") -> None:
             surface.blit(label, (2, y * TILE + 2))
 
     pygame.init()
-    level_order = [name for name in LEVEL_ORDER if name in LEVELS] + [name for name in LEVELS if name not in LEVEL_ORDER]
-    number_keys = [
+    level_order = [name for name in LEVEL_ORDER if name in LEVELS]
+    base_number_keys = [
         pygame.K_1,
         pygame.K_2,
         pygame.K_3,
@@ -234,10 +234,22 @@ def run_game(initial_level: str = "empty") -> None:
         pygame.K_9,
         pygame.K_0,
     ]
+    number_keys = base_number_keys[: len(level_order)]
     level_hotkeys = {key: name for key, name in zip(number_keys, level_order)}
 
+    if number_keys:
+        if len(number_keys) == 10:
+            key_hint = "1-9,0"
+        elif len(number_keys) == 1:
+            key_hint = "1"
+        else:
+            key_hint = f"1-{len(number_keys)}"
+        hotkey_text = f"{key_hint}: change level"
+    else:
+        hotkey_text = "No level hotkeys"
+
     instructions = [
-        "Space: pause/resume | N: step | R: reset water/moves | P: print map | M: print map (no water) | 1-9,0: change level",
+        f"Space: pause/resume | N: step | R: reset water/moves | P: print map | M: print map (no water) | {hotkey_text}",
         "Modes: W wall | S sink | E emitter (tap again to rotate) | Left-click place/remove | Right-click clear water",
     ]
     header_font = pygame.font.SysFont(None, 16)

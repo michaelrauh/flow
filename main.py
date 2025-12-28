@@ -4,7 +4,7 @@ import math
 from ascii_renderer import AsciiRenderer
 from dsl import run_script
 from game import run_game
-from levels import LEVELS, get_level, parse_level
+from levels import LEVEL_ORDER, LEVELS, get_level, parse_level
 from simulation_constants import STEP_MS
 from simulation_engine import SimulationEngine
 from simulation_state import SimulationState
@@ -31,7 +31,7 @@ def parse_args():
     )
     parser.add_argument(
         "--level",
-        default="empty",
+        default=LEVEL_ORDER[0],
         help="Level to load (choices: {}).".format(", ".join(sorted(LEVELS))),
     )
     parser.add_argument(
