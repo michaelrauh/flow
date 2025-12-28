@@ -237,13 +237,13 @@ def run_game(initial_level: str = "empty") -> None:
     level_hotkeys = {key: name for key, name in zip(number_keys, level_order)}
 
     instructions = [
-        "Space: pause/resume | N: step | R: reset water | P: print map | M: print map (no water) | 1-9,0: change level",
+        "Space: pause/resume | N: step | R: reset water/moves | P: print map | M: print map (no water) | 1-9,0: change level",
         "Modes: W wall | S sink | E emitter (tap again to rotate) | Left-click place/remove | Right-click clear water",
     ]
     header_font = pygame.font.SysFont(None, 16)
     header_pad = 4
-    extra_status_lines = 1
-    header_height = header_font.get_linesize() * (len(instructions) + extra_status_lines) + header_pad * 2
+    header_line_count = len(instructions) + 2  # moves line + win status line
+    header_height = header_font.get_linesize() * header_line_count + header_pad * 2
     font = pygame.font.SysFont(None, 14)
     clock = pygame.time.Clock()
 
@@ -253,6 +253,8 @@ def run_game(initial_level: str = "empty") -> None:
     view.create_screen(level_state.w, level_state.h)
     view.rebuild_static(level_state)
     water_state = WaterState()
+
+    move_count = 0
 
     step_acc = 0
     running = True
@@ -266,12 +268,20 @@ def run_game(initial_level: str = "empty") -> None:
     def sync_sinks():
         view.sync_sinks(water_state.sim_state.sink_claims, level_state.emitter_colors)
 
+    def reset_sink_claims():
+        water_state.sim_state.clear_sink_claims()
+
+    def reset_moves():
+        nonlocal move_count
+        move_count = 0
+
+    def increment_moves():
+        nonlocal move_count
+        move_count += 1
+
     def clear_water_state():
         water_state.clear()
         sync_sinks()
-
-    def reset_sink_claims():
-        water_state.sim_state.clear_sink_claims()
 
     def load_level(name):
         reset_sink_claims()
@@ -279,6 +289,7 @@ def run_game(initial_level: str = "empty") -> None:
         view.create_screen(level_state.w, level_state.h)
         view.rebuild_static(level_state)
         clear_water_state()
+        reset_moves()
         update_caption()
 
     def handle_wall(gx, gy, toggle=True):
@@ -352,6 +363,7 @@ def run_game(initial_level: str = "empty") -> None:
                     step_simulation()
                 elif event.key == pygame.K_r:
                     clear_water_state()
+                    reset_moves()
                 elif event.key == pygame.K_w:
                     if input_mode.set_mode("wall"):
                         update_caption()
@@ -399,8 +411,10 @@ def run_game(initial_level: str = "empty") -> None:
                 if not (0 <= gx < level_state.w and 0 <= gy < level_state.h):
                     continue
                 if event.button == 1:
+                    increment_moves()
                     apply_action(gx, gy, toggle=True)
                 elif event.button == 3:
+                    increment_moves()
                     clear_water_at(gx, gy)
             elif event.type == pygame.MOUSEMOTION:
                 mx, my = pygame.mouse.get_pos()
@@ -427,7 +441,7 @@ def run_game(initial_level: str = "empty") -> None:
         screen.fill((20, 20, 20))
         pygame.draw.rect(screen, (30, 30, 30), (0, 0, level_state.w * TILE, header_height))
         win_text = "All sinks saturated! You win!" if win else ""
-        header_lines = instructions + [win_text]
+        header_lines = [f"Moves: {move_count}"] + instructions + [win_text]
         for idx, line in enumerate(header_lines):
             color = (120, 220, 120) if line and idx == len(header_lines) - 1 else (200, 200, 200)
             text = header_font.render(line, True, color)
