@@ -1,22 +1,27 @@
 import math
 from typing import Callable, Dict, Iterable, List
 
+from ascii_renderer import AsciiRenderer
 from levels import get_level, parse_level
-from simulation import STEP_MS, SimulationState, clear_sink_claims, in_bounds, render_ascii, tick
+from movement_resolver import in_bounds
+from simulation_constants import STEP_MS
+from simulation_engine import SimulationEngine
+from simulation_state import SimulationState
 from typedefs import Coord
 
 
 def run_script(script_text: str, default_level_name: str = "turn") -> None:
     state = SimulationState()
-    clear_sink_claims(state)
+    state.clear_sink_claims()
     level_lines = get_level(default_level_name)
     w, h, walls, emitters, sinks = parse_level(level_lines)
     emitter_positions = {(e.x, e.y) for e in emitters}
     water = state.water
+    engine = SimulationEngine()
 
     def advance_steps(steps: int) -> None:
         for _ in range(max(0, steps)):
-            tick(w, h, walls, emitters, sinks, state)
+            engine.tick(w, h, walls, emitters, sinks, state)
 
     def parse_coord(token: str) -> Coord:
         if "," in token:
@@ -100,4 +105,4 @@ def run_script(script_text: str, default_level_name: str = "turn") -> None:
             handler(args)
 
     print("Script complete")
-    print(render_ascii(w, h, walls, emitters, sinks, water, show_coords=True))
+    print(AsciiRenderer.render(w, h, walls, emitters, sinks, water, show_coords=True))

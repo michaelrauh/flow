@@ -1,9 +1,25 @@
 import argparse
+import math
 
+from ascii_renderer import AsciiRenderer
 from dsl import run_script
 from game import run_game
-from levels import LEVELS, get_level
-from simulation import run_headless
+from levels import LEVELS, get_level, parse_level
+from simulation_constants import STEP_MS
+from simulation_engine import SimulationEngine
+from simulation_state import SimulationState
+
+_ENGINE = SimulationEngine()
+
+
+def run_headless(duration_ms, level_lines) -> None:
+    state = SimulationState()
+    w, h, walls, emitters, sinks = parse_level(level_lines)
+    steps = max(1, int(math.ceil(duration_ms / float(STEP_MS))))
+    for _ in range(steps):
+        _ENGINE.tick(w, h, walls, emitters, sinks, state)
+    print(f"Simulated {steps} steps (~{duration_ms} ms)")
+    print(AsciiRenderer.render(w, h, walls, emitters, sinks, state.water, show_coords=True))
 
 
 def parse_args():

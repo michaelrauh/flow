@@ -1,5 +1,6 @@
 import pygame
 
+from ascii_renderer import AsciiRenderer
 from graphics import (
     TILE,
     EmitterSprite,
@@ -10,10 +11,13 @@ from graphics import (
     sync_water_sprites,
 )
 from levels import DIRS, DIR_TO_CHAR, Emitter, LEVEL_ORDER, LEVELS, get_level, parse_level
-from simulation import STEP_MS, SimulationState, clear_sink_claims, render_ascii, tick
+from simulation_constants import STEP_MS
+from simulation_engine import SimulationEngine
+from simulation_state import SimulationState
 
 FPS = 60
 GAME_SPEED = 5.0  # multiplier on simulation speed in the interactive view
+_ENGINE = SimulationEngine()
 
 
 class InputMode:
@@ -195,7 +199,7 @@ class WaterState:
         self.sim_state.water.pop((gx, gy), None)
 
     def step(self, level: LevelState):
-        tick(level.w, level.h, level.walls, level.emitters, level.sinks, self.sim_state)
+        _ENGINE.tick(level.w, level.h, level.walls, level.emitters, level.sinks, self.sim_state)
 
     def sync(self, level: LevelState):
         sync_water_sprites(self.sim_state.water, self.water_sprites, level.emitter_colors)
@@ -257,7 +261,7 @@ def run_game(initial_level: str = "empty") -> None:
         water_state.clear()
 
     def reset_sink_claims():
-        clear_sink_claims(water_state.sim_state)
+        water_state.sim_state.clear_sink_claims()
 
     def load_level(name):
         reset_sink_claims()
@@ -347,13 +351,19 @@ def run_game(initial_level: str = "empty") -> None:
                     update_caption()
                 elif event.key == pygame.K_m:
                     print(
-                        render_ascii(
-                            level_state.w, level_state.h, level_state.walls, level_state.emitters, level_state.sinks, {}, show_coords=True
+                        AsciiRenderer.render(
+                            level_state.w,
+                            level_state.h,
+                            level_state.walls,
+                            level_state.emitters,
+                            level_state.sinks,
+                            {},
+                            show_coords=True,
                         )
                     )
                 elif event.key == pygame.K_p:
                     print(
-                        render_ascii(
+                        AsciiRenderer.render(
                             level_state.w,
                             level_state.h,
                             level_state.walls,

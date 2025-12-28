@@ -3,7 +3,7 @@ from typing import Mapping
 
 import pygame
 
-from simulation import WaterCell
+from simulation_state import WaterCell
 from typedefs import Coord
 
 TILE = 24

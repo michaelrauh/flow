@@ -23,7 +23,3 @@ class SimulationState:
 
     def clear_sink_claims(self) -> None:
         self.sink_claims.clear()
-
-
-def clear_sink_claims(state: SimulationState) -> None:
-    state.clear_sink_claims()
