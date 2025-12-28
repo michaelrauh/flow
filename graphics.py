@@ -1,6 +1,10 @@
 import colorsys
+from typing import Mapping
 
 import pygame
+
+from simulation import WaterCell
+from typedefs import Coord
 
 TILE = 24
 
@@ -146,14 +150,19 @@ def build_static_sprites(walls, sinks, emitters, emitter_colors):
     return static_sprites, wall_lookup, sink_lookup, emitter_lookup
 
 
-def sync_water_sprites(water_state, water_group, emitter_colors):
+def sync_water_sprites(
+    water_state: Mapping[Coord, WaterCell],
+    water_group,
+    emitter_colors,
+):
     existing = {(sprite.grid_pos): sprite for sprite in water_group.sprites()}
     missing = set(existing.keys()) - set(water_state.keys())
     for pos in missing:
         existing[pos].kill()
         existing.pop(pos, None)
 
-    for (x, y), (dx, dy, _age, eid, _pref) in water_state.items():
+    for (x, y), cell in water_state.items():
+        dx, dy, eid = cell.dx, cell.dy, cell.emitter_id
         color = emitter_colors.get(eid, emitter_color_for_id(eid))
         sprite = existing.get((x, y))
         if sprite is None:
