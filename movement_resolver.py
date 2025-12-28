@@ -18,8 +18,10 @@ class MovementResolver:
         self.state = state
         self.emitter_positions = {(e.x, e.y) for e in self.emitters}
         self.prev_owner = {pos: cell.emitter_id for pos, cell in state.water.items()}
+        self.spawned_positions: Set[Coord] = set()
 
     def spawn_from_emitters(self, occupied: Set[Coord]) -> None:
+        self.spawned_positions.clear()
         for emitter in self.emitters:
             tx, ty = emitter.x + emitter.dx, emitter.y + emitter.dy
             if not in_bounds(tx, ty, self.w, self.h):
@@ -30,6 +32,7 @@ class MovementResolver:
                 continue
             self.state.water[(tx, ty)] = WaterCell(emitter.dx, emitter.dy, 0, emitter.id, True)
             occupied.add((tx, ty))
+            self.spawned_positions.add((tx, ty))
 
     def _propose_move(self, position: Coord, cell: WaterCell):
         x, y = position
@@ -111,13 +114,20 @@ class MovementResolver:
                 src, ndx, ndy, eid, pref_left = movers[0]
                 edges[src] = (tgt, ndx, ndy, eid, pref_left)
                 continue
+            occupant_eid = self.prev_owner.get(tgt)
+            unique_eids = {eid for (_src, _ndx, _ndy, eid, _pref) in movers}
+            single_emitter = len(unique_eids) == 1
+            same_eid_incoming = any(
+                src != tgt and eid == occupant_eid for (src, _ndx, _ndy, eid, _pref) in movers
+            )
 
             def priority(move: Tuple[Coord, int, int, int, bool]) -> Tuple[int, int, int, int]:
                 src, ndx, ndy, eid, pref_left = move
                 cell = self.state.water.get(src, WaterCell(ndx, ndy, 0, eid, pref_left))
                 straight = (ndx, ndy) == (cell.dx, cell.dy)
-                owner_bonus = 0 if self.prev_owner.get(tgt) == eid else 1
-                return (owner_bonus, 0 if straight else 1, src[1], src[0])
+                owner_bonus = 0 if (single_emitter or self.prev_owner.get(tgt) == eid) else 1
+                stay_penalty = 1 if (src == tgt and same_eid_incoming) else 0
+                return (stay_penalty, owner_bonus, 0 if straight else 1, src[1], src[0])
 
             src, ndx, ndy, eid, pref_left = min(movers, key=priority)
             edges[src] = (tgt, ndx, ndy, eid, pref_left)
@@ -165,6 +175,38 @@ class MovementResolver:
         visiting: Set[Coord] = set()
         occupied_now = set(self.state.water.keys())
 
+        # Identify cells that are under same-emitter backpressure so they do not
+        # decay just because the front of the queue is momentarily blocked.
+        same_eid_pressure: Set[Coord] = set()
+        for tgt, incoming_ids in inflow_targets.items():
+            cell = self.state.water.get(tgt)
+            if cell and cell.emitter_id in incoming_ids:
+                same_eid_pressure.add(tgt)
+        deps: Dict[Coord, List[Coord]] = {}
+        for src, (tgt, _ndx, _ndy, eid, _pref) in edges.items():
+            if tgt in self.sinks or tgt == src:
+                continue
+            occupant = self.state.water.get(tgt)
+            if occupant and occupant.emitter_id == eid:
+                deps.setdefault(tgt, []).append(src)
+
+        stack: List[Coord] = list(same_eid_pressure)
+        while stack:
+            tgt = stack.pop()
+            for src in deps.get(tgt, []):
+                cell = self.state.water.get(src)
+                if cell is None:
+                    continue
+                # Only propagate pressure to a source that itself is being fed
+                # (i.e., another cell is trying to move into it). This prevents
+                # pressure from flowing all the way back to an idle emitter when
+                # the line is effectively empty.
+                if cell.emitter_id not in inflow_targets.get(src, set()):
+                    continue
+                if src not in same_eid_pressure:
+                    same_eid_pressure.add(src)
+                    stack.append(src)
+
         for (x, y), cell in self.state.water.items():
             if (x, y) in edges and self._move_succeeds((x, y), edges, occupied_now, memo, visiting):
                 (nx, ny), ndx, ndy, neid, npref = edges[(x, y)]
@@ -174,12 +216,14 @@ class MovementResolver:
                         new_age = 0
                     else:
                         inflow_ids = inflow_targets.get((nx, ny), set())
-                        new_age = 0 if neid in inflow_ids else cell.age + 1
+                        pressured = (nx, ny) in same_eid_pressure
+                        new_age = 0 if (neid in inflow_ids or pressured) else cell.age + 1
                     if new_age < decay_steps:
                         next_water[(nx, ny)] = WaterCell(ndx, ndy, new_age, neid, npref)
             else:
                 inflow_ids = inflow_targets.get((x, y), set())
-                new_age = 0 if cell.emitter_id in inflow_ids else cell.age + 1
+                pressured = (x, y) in same_eid_pressure
+                new_age = 0 if (cell.emitter_id in inflow_ids or pressured) else cell.age + 1
                 if new_age < decay_steps:
                     next_water[(x, y)] = WaterCell(cell.dx, cell.dy, new_age, cell.emitter_id, cell.prefer_left)
 
