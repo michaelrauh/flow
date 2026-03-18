@@ -137,6 +137,66 @@ class LevelState:
         return "added", emitter
 
 
+class PlaceWallCommand:
+    def __init__(self, gx, gy):
+        self.gx = gx
+        self.gy = gy
+
+    def undo(self, level_state, view, clear_water):
+        level_state.walls.discard((self.gx, self.gy))
+        view.remove_wall(self.gx, self.gy)
+        clear_water()
+
+    def redo(self, level_state, view, clear_water):
+        level_state.walls.add((self.gx, self.gy))
+        view.add_wall(self.gx, self.gy)
+        clear_water()
+
+
+class RemoveWallCommand:
+    def __init__(self, gx, gy):
+        self.gx = gx
+        self.gy = gy
+
+    def undo(self, level_state, view, clear_water):
+        level_state.walls.add((self.gx, self.gy))
+        view.add_wall(self.gx, self.gy)
+        clear_water()
+
+    def redo(self, level_state, view, clear_water):
+        level_state.walls.discard((self.gx, self.gy))
+        view.remove_wall(self.gx, self.gy)
+        clear_water()
+
+
+class CommandHistory:
+    def __init__(self):
+        self._undo_stack = []
+        self._redo_stack = []
+
+    def push(self, command):
+        self._undo_stack.append(command)
+        self._redo_stack.clear()
+
+    def undo(self, level_state, view, clear_water):
+        if not self._undo_stack:
+            return
+        cmd = self._undo_stack.pop()
+        cmd.undo(level_state, view, clear_water)
+        self._redo_stack.append(cmd)
+
+    def redo(self, level_state, view, clear_water):
+        if not self._redo_stack:
+            return
+        cmd = self._redo_stack.pop()
+        cmd.redo(level_state, view, clear_water)
+        self._undo_stack.append(cmd)
+
+    def clear(self):
+        self._undo_stack.clear()
+        self._redo_stack.clear()
+
+
 class ViewContext:
     def __init__(self, header_height: int):
         self.header_height = header_height
@@ -250,7 +310,7 @@ def run_game(initial_level: str = LEVEL_ORDER[0]) -> None:
 
     instructions = [
         f"Space: pause/resume | N: step | R: reset water/moves | P: print map | M: print map (no water) | {hotkey_text}",
-        "Modes: W wall | S sink | E emitter (tap again to rotate) | Left-click place/remove | Right-click clear water",
+        "Modes: W wall | S sink | E emitter (tap again to rotate) | Left-click place/remove | Right-click clear water | Ctrl+Z undo | Ctrl+Y redo",
     ]
     header_font = pygame.font.SysFont(None, 16)
     header_pad = 4
@@ -265,6 +325,7 @@ def run_game(initial_level: str = LEVEL_ORDER[0]) -> None:
     view.create_screen(level_state.w, level_state.h)
     view.rebuild_static(level_state)
     water_state = WaterState()
+    history = CommandHistory()
 
     move_count = 0
 
@@ -302,6 +363,7 @@ def run_game(initial_level: str = LEVEL_ORDER[0]) -> None:
         view.rebuild_static(level_state)
         clear_water_state()
         reset_moves()
+        history.clear()
         update_caption()
 
     def handle_wall(gx, gy, toggle=True):
@@ -309,9 +371,11 @@ def run_game(initial_level: str = LEVEL_ORDER[0]) -> None:
         if action == "added":
             view.add_wall(gx, gy)
             clear_water_state()
+            history.push(PlaceWallCommand(gx, gy))
         elif action == "removed":
             view.remove_wall(gx, gy)
             clear_water_state()
+            history.push(RemoveWallCommand(gx, gy))
 
     def handle_sink(gx, gy, toggle=True):
         action = level_state.toggle_sink(gx, gy) if toggle else level_state.place_sink(gx, gy)
@@ -373,6 +437,10 @@ def run_game(initial_level: str = LEVEL_ORDER[0]) -> None:
                     paused = not paused
                 elif event.key == pygame.K_n:
                     step_simulation()
+                elif event.key == pygame.K_z and (event.mod & pygame.KMOD_CTRL):
+                    history.undo(level_state, view, clear_water_state)
+                elif event.key == pygame.K_y and (event.mod & pygame.KMOD_CTRL):
+                    history.redo(level_state, view, clear_water_state)
                 elif event.key == pygame.K_r:
                     clear_water_state()
                     reset_moves()
