@@ -328,7 +328,7 @@ def run_game(initial_level: str = LEVEL_ORDER[0]) -> None:
         hotkey_text = "No level hotkeys"
 
     play_instructions = [
-        f"Space: pause/resume | N: step | R: reset water/moves | H: hint | P: print map | M: print map (no water) | {hotkey_text} | Tab: editor",
+        f"Space: pause/resume | N: step | R: reset water/moves | H: hint | T: territory | P: print map | M: print map (no water) | {hotkey_text} | Tab: editor",
         "Modes: W wall | S sink | E emitter (tap again to rotate) | Left-click place/remove | Right-click clear water | Ctrl+Z undo | Ctrl+Y redo",
     ]
     editor_instructions = [
@@ -355,6 +355,7 @@ def run_game(initial_level: str = LEVEL_ORDER[0]) -> None:
     custom_level_index = 0
     save_counter = 0
     hint_cell = None  # (gx, gy) of the currently suggested wall, or None
+    show_territory = False  # toggleable emitter territory overlay
     pulses = []  # list of {'ex': int, 'ey': int, 'color': tuple, 'age_ms': float}
 
     step_acc = 0
@@ -488,6 +489,8 @@ def run_game(initial_level: str = LEVEL_ORDER[0]) -> None:
                     reset_moves()
                     if state in (GameState.PAUSED, GameState.WON):
                         state = GameState.PLAYING
+                elif event.key == pygame.K_t:
+                    show_territory = not show_territory
                 elif event.key == pygame.K_h:
                     hint_cell = get_hint(
                         level_state.w,
@@ -625,6 +628,27 @@ def run_game(initial_level: str = LEVEL_ORDER[0]) -> None:
         view.static_sprites.draw(grid_surface)
         water_state.connector_sprites.draw(grid_surface)
         water_state.water_sprites.draw(grid_surface)
+        if show_territory and water_state.sim_state.water:
+            overlay = pygame.Surface((level_state.w * TILE, level_state.h * TILE), pygame.SRCALPHA)
+            # Translucent territory fill per water cell
+            for (cx, cy), wcell in water_state.sim_state.water.items():
+                color = level_state.emitter_colors.get(wcell.emitter_id, (200, 200, 200))
+                overlay.fill((*color, 55), (cx * TILE, cy * TILE, TILE, TILE))
+            # Contested zones: cells adjacent to water from 2+ different emitters
+            neighbor_emitters = {}
+            for (cx, cy), wcell in water_state.sim_state.water.items():
+                for nx, ny in ((cx - 1, cy), (cx + 1, cy), (cx, cy - 1), (cx, cy + 1)):
+                    if (nx, ny) not in neighbor_emitters:
+                        neighbor_emitters[(nx, ny)] = set()
+                    neighbor_emitters[(nx, ny)].add(wcell.emitter_id)
+            for (nx, ny), eids in neighbor_emitters.items():
+                if len(eids) >= 2:
+                    px = nx * TILE + TILE // 2
+                    py = ny * TILE + TILE // 2
+                    hw = TILE // 3
+                    pygame.draw.line(overlay, (255, 255, 80, 220), (px - hw, py), (px + hw, py), 2)
+                    pygame.draw.line(overlay, (255, 255, 80, 220), (px, py - hw), (px, py + hw), 2)
+            grid_surface.blit(overlay, (0, 0))
         for pulse in pulses:
             t = pulse['age_ms'] / PULSE_DURATION_MS
             radius = max(1, int(t * PULSE_MAX_RADIUS))
