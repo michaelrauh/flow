@@ -11,6 +11,7 @@ class WaterCell:
     age: int
     emitter_id: int
     prefer_left: bool
+    pressured: bool = False
 
 
 @dataclass

@@ -85,18 +85,35 @@ def _decay_tint(color, age, decay_steps):
     return (nr, ng, nb), alpha
 
 
-def get_water_surface(dx, dy, color, age=0, decay_steps=1):
-    key = (dx, dy, color, age, decay_steps)
+def get_water_surface(dx, dy, color, age=0, decay_steps=1, prefer_left=True, pressured=False):
+    key = (dx, dy, color, age, decay_steps, prefer_left, pressured)
     if key not in _WATER_SURFACE_CACHE:
         surface = pygame.Surface((TILE, TILE), pygame.SRCALPHA)
         center = (TILE // 2, TILE // 2)
         draw_color, alpha = _decay_tint(color, age, decay_steps)
+        if pressured:
+            draw_color = _lighten(draw_color, 1.3)
         pygame.draw.circle(surface, (*draw_color, alpha), center, TILE // 3)
         arrow_end = (
             center[0] + dx * (TILE // 2 - 3),
             center[1] + dy * (TILE // 2 - 3),
         )
         pygame.draw.line(surface, (*_lighten(draw_color, 1.25), alpha), center, arrow_end, 3)
+        # prefer_left indicator: small triangle pointing toward the preferred turn side.
+        # Left of (dx,dy) is (dy,-dx); right is (-dy,dx).
+        side_dx, side_dy = (dy, -dx) if prefer_left else (-dy, dx)
+        tri_cx = int(center[0] + side_dx * (TILE // 5))
+        tri_cy = int(center[1] + side_dy * (TILE // 5))
+        s = 3
+        tri_points = [
+            (tri_cx + side_dx * s, tri_cy + side_dy * s),
+            (tri_cx + side_dy * s, tri_cy - side_dx * s),
+            (tri_cx - side_dy * s, tri_cy + side_dx * s),
+        ]
+        pygame.draw.polygon(surface, (*_lighten(draw_color, 1.5), alpha), tri_points)
+        if pressured:
+            ring_color = _lighten(draw_color, 1.6)
+            pygame.draw.circle(surface, (*ring_color, min(255, alpha + 60)), center, TILE // 3, 2)
         _WATER_SURFACE_CACHE[key] = surface
     return _WATER_SURFACE_CACHE[key]
 
@@ -133,21 +150,32 @@ class EmitterSprite(TileSprite):
 
 
 class WaterSprite(TileSprite):
-    def __init__(self, x, y, dx, dy, color, age=0, decay_steps=1):
-        super().__init__(x, y, get_water_surface(dx, dy, color, age, decay_steps))
+    def __init__(self, x, y, dx, dy, color, age=0, decay_steps=1, prefer_left=True, pressured=False):
+        super().__init__(x, y, get_water_surface(dx, dy, color, age, decay_steps, prefer_left, pressured))
         self.dx = dx
         self.dy = dy
         self.color = color
         self.age = age
         self.decay_steps = decay_steps
+        self.prefer_left = prefer_left
+        self.pressured = pressured
 
-    def update_state(self, x, y, dx, dy, color, age=0, decay_steps=1):
-        if (dx, dy) != (self.dx, self.dy) or color != self.color or age != self.age or decay_steps != self.decay_steps:
-            self.image = get_water_surface(dx, dy, color, age, decay_steps)
+    def update_state(self, x, y, dx, dy, color, age=0, decay_steps=1, prefer_left=True, pressured=False):
+        if (
+            (dx, dy) != (self.dx, self.dy)
+            or color != self.color
+            or age != self.age
+            or decay_steps != self.decay_steps
+            or prefer_left != self.prefer_left
+            or pressured != self.pressured
+        ):
+            self.image = get_water_surface(dx, dy, color, age, decay_steps, prefer_left, pressured)
         self.dx, self.dy = dx, dy
         self.color = color
         self.age = age
         self.decay_steps = decay_steps
+        self.prefer_left = prefer_left
+        self.pressured = pressured
         if (x, y) != self.grid_pos:
             self.grid_pos = (x, y)
             self.rect.topleft = (x * TILE, y * TILE)
@@ -191,12 +219,14 @@ def sync_water_sprites(
 
     for (x, y), cell in water_state.items():
         dx, dy, eid, age = cell.dx, cell.dy, cell.emitter_id, cell.age
+        prefer_left = cell.prefer_left
+        pressured = cell.pressured
         color = emitter_colors.get(eid, emitter_color_for_id(eid))
         sprite = existing.get((x, y))
         if sprite is None:
-            water_group.add(WaterSprite(x, y, dx, dy, color, age, decay_steps))
+            water_group.add(WaterSprite(x, y, dx, dy, color, age, decay_steps, prefer_left, pressured))
         else:
-            sprite.update_state(x, y, dx, dy, color, age, decay_steps)
+            sprite.update_state(x, y, dx, dy, color, age, decay_steps, prefer_left, pressured)
 
 
 def sync_sink_sprites(sink_lookup, sink_claims, emitter_colors):

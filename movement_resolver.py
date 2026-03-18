@@ -219,12 +219,12 @@ class MovementResolver:
                         pressured = (nx, ny) in same_eid_pressure
                         new_age = 0 if (neid in inflow_ids or pressured) else cell.age + 1
                     if new_age < decay_steps:
-                        next_water[(nx, ny)] = WaterCell(ndx, ndy, new_age, neid, npref)
+                        next_water[(nx, ny)] = WaterCell(ndx, ndy, new_age, neid, npref, False)
             else:
                 inflow_ids = inflow_targets.get((x, y), set())
                 pressured = (x, y) in same_eid_pressure
                 new_age = 0 if (cell.emitter_id in inflow_ids or pressured) else cell.age + 1
                 if new_age < decay_steps:
-                    next_water[(x, y)] = WaterCell(cell.dx, cell.dy, new_age, cell.emitter_id, cell.prefer_left)
+                    next_water[(x, y)] = WaterCell(cell.dx, cell.dy, new_age, cell.emitter_id, cell.prefer_left, pressured)
 
         return next_water
