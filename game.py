@@ -24,6 +24,8 @@ from solver import get_hint
 FPS = 60
 GAME_SPEED = 5.0  # multiplier on simulation speed in the interactive view
 _ENGINE = SimulationEngine()
+PULSE_DURATION_MS = 500  # ms for one pulse ring to expand and fade
+PULSE_MAX_RADIUS = int(TILE * 1.6)  # max ring radius in pixels
 
 
 class GameState(Enum):
@@ -277,7 +279,7 @@ class WaterState:
         self.sim_state.water.pop((gx, gy), None)
 
     def step(self, level: LevelState):
-        _ENGINE.tick(level.w, level.h, level.walls, level.emitters, level.sinks, self.sim_state)
+        return _ENGINE.tick(level.w, level.h, level.walls, level.emitters, level.sinks, self.sim_state)
 
     def sync(self, level: LevelState):
         sync_water_sprites(self.sim_state.water, self.water_sprites, level.emitter_colors, _ENGINE.decay_steps)
@@ -349,6 +351,7 @@ def run_game(initial_level: str = LEVEL_ORDER[0]) -> None:
     custom_level_index = 0
     save_counter = 0
     hint_cell = None  # (gx, gy) of the currently suggested wall, or None
+    pulses = []  # list of {'ex': int, 'ey': int, 'color': tuple, 'age_ms': float}
 
     step_acc = 0
     running = True
@@ -377,6 +380,7 @@ def run_game(initial_level: str = LEVEL_ORDER[0]) -> None:
         nonlocal hint_cell
         water_state.clear()
         hint_cell = None
+        pulses.clear()
         sync_sinks()
 
     def load_level(name):
@@ -438,7 +442,11 @@ def run_game(initial_level: str = LEVEL_ORDER[0]) -> None:
         water_state.clear_at(gx, gy)
 
     def step_simulation():
-        water_state.step(level_state)
+        spawned_ids = water_state.step(level_state)
+        for emitter in level_state.emitters:
+            if emitter.id in spawned_ids:
+                color = level_state.emitter_colors.get(emitter.id, emitter_color_for_id(emitter.id))
+                pulses.append({'ex': emitter.x, 'ey': emitter.y, 'color': color, 'age_ms': 0.0})
 
     def sync_water():
         water_state.sync(level_state)
@@ -585,6 +593,11 @@ def run_game(initial_level: str = LEVEL_ORDER[0]) -> None:
 
         sync_water()
 
+        # Advance and prune pulse animations
+        for pulse in pulses:
+            pulse['age_ms'] += dt
+        pulses[:] = [p for p in pulses if p['age_ms'] < PULSE_DURATION_MS]
+
         screen = view.screen
         screen.fill((20, 20, 20))
         pygame.draw.rect(screen, (30, 30, 30), (0, 0, level_state.w * TILE, header_height))
@@ -607,6 +620,16 @@ def run_game(initial_level: str = LEVEL_ORDER[0]) -> None:
         grid_surface.fill((20, 20, 20))
         view.static_sprites.draw(grid_surface)
         water_state.water_sprites.draw(grid_surface)
+        for pulse in pulses:
+            t = pulse['age_ms'] / PULSE_DURATION_MS
+            radius = max(1, int(t * PULSE_MAX_RADIUS))
+            alpha = int((1.0 - t) * 200)
+            cx = pulse['ex'] * TILE + TILE // 2
+            cy = pulse['ey'] * TILE + TILE // 2
+            ring_size = radius * 2 + 6
+            ring_surf = pygame.Surface((ring_size, ring_size), pygame.SRCALPHA)
+            pygame.draw.circle(ring_surf, (*pulse['color'], alpha), (ring_size // 2, ring_size // 2), radius, 2)
+            grid_surface.blit(ring_surf, (cx - ring_size // 2, cy - ring_size // 2))
         if hint_cell is not None:
             hx, hy = hint_cell
             hint_surf = pygame.Surface((TILE, TILE), pygame.SRCALPHA)

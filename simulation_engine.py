@@ -24,13 +24,20 @@ class SimulationEngine:
         emitters,
         sinks: Set,
         state: SimulationState,
-    ) -> None:
+    ) -> Set[int]:
+        """Run one simulation step. Returns the set of emitter IDs that spawned this tick."""
         if not state.water:
             state.clear_sink_claims()
 
         occupied = set(state.water.keys())
         resolver = MovementResolver(w, h, walls, emitters, sinks, state)
         resolver.spawn_from_emitters(occupied)
+
+        spawned_emitter_ids: Set[int] = set()
+        for emitter in emitters:
+            tx, ty = emitter.x + emitter.dx, emitter.y + emitter.dy
+            if (tx, ty) in resolver.spawned_positions:
+                spawned_emitter_ids.add(emitter.id)
 
         proposals = resolver.build_proposals()
         targets = resolver.group_targets(proposals)
@@ -42,3 +49,5 @@ class SimulationEngine:
 
         state.clear_water()
         state.water.update(filtered)
+
+        return spawned_emitter_ids
