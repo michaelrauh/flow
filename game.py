@@ -9,6 +9,7 @@ from graphics import (
     WallSprite,
     build_static_sprites,
     emitter_color_for_id,
+    sync_connector_sprites,
     sync_sink_sprites,
     sync_water_sprites,
 )
@@ -269,11 +270,13 @@ class WaterState:
     def __init__(self):
         self.sim_state = SimulationState()
         self.water_sprites = pygame.sprite.Group()
+        self.connector_sprites = pygame.sprite.Group()
 
     def clear(self):
         self.sim_state.clear_water()
         self.sim_state.clear_sink_claims()
         self.water_sprites.empty()
+        self.connector_sprites.empty()
 
     def clear_at(self, gx, gy):
         self.sim_state.water.pop((gx, gy), None)
@@ -283,6 +286,7 @@ class WaterState:
 
     def sync(self, level: LevelState):
         sync_water_sprites(self.sim_state.water, self.water_sprites, level.emitter_colors, _ENGINE.decay_steps)
+        sync_connector_sprites(self.sim_state.water, self.connector_sprites, level.emitter_colors)
 
 
 def run_game(initial_level: str = LEVEL_ORDER[0]) -> None:
@@ -619,6 +623,7 @@ def run_game(initial_level: str = LEVEL_ORDER[0]) -> None:
         grid_surface = screen.subsurface((0, header_height, level_state.w * TILE, level_state.h * TILE))
         grid_surface.fill((20, 20, 20))
         view.static_sprites.draw(grid_surface)
+        water_state.connector_sprites.draw(grid_surface)
         water_state.water_sprites.draw(grid_surface)
         for pulse in pulses:
             t = pulse['age_ms'] / PULSE_DURATION_MS

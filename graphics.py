@@ -199,6 +199,58 @@ def sync_water_sprites(
             sprite.update_state(x, y, dx, dy, color, age, decay_steps)
 
 
+class ConnectorSprite(pygame.sprite.Sprite):
+    def __init__(self, x, y, dx, dy, color):
+        super().__init__()
+        self.key = (x, y, dx, dy)
+        self.color = color
+        half = TILE // 2
+        radius = TILE // 3
+        if dx:  # horizontal connector
+            w, h = TILE, radius * 2
+            px = x * TILE + half
+            py = y * TILE + half - radius
+        else:  # vertical connector
+            w, h = radius * 2, TILE
+            px = x * TILE + half - radius
+            py = y * TILE + half
+        self.image = pygame.Surface((w, h), pygame.SRCALPHA)
+        self.image.fill(color)
+        self.rect = self.image.get_rect()
+        self.rect.topleft = (px, py)
+
+    def update_color(self, color):
+        if color != self.color:
+            self.color = color
+            self.image.fill(color)
+
+
+def sync_connector_sprites(
+    water_state: Mapping[Coord, WaterCell],
+    connector_group,
+    emitter_colors,
+):
+    existing = {sprite.key: sprite for sprite in connector_group.sprites()}
+    needed = {}
+    for (x, y), cell in water_state.items():
+        eid = cell.emitter_id
+        color = emitter_colors.get(eid, emitter_color_for_id(eid))
+        for dx, dy in [(1, 0), (0, 1)]:
+            neighbor = (x + dx, y + dy)
+            if neighbor in water_state and water_state[neighbor].emitter_id == eid:
+                key = (x, y, dx, dy)
+                needed[key] = (x, y, dx, dy, color)
+
+    for key in set(existing.keys()) - set(needed.keys()):
+        existing[key].kill()
+
+    for key, (x, y, dx, dy, color) in needed.items():
+        if key not in existing:
+            connector_group.add(ConnectorSprite(x, y, dx, dy, color))
+        else:
+            existing[key].update_color(color)
+
+
 def sync_sink_sprites(sink_lookup, sink_claims, emitter_colors):
     for pos, sprite in sink_lookup.items():
         owner = sink_claims.get(pos)
