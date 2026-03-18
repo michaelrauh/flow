@@ -19,6 +19,7 @@ from levels import (
 from simulation_constants import STEP_MS
 from simulation_engine import SimulationEngine
 from simulation_state import SimulationState
+from solver import get_hint
 
 FPS = 60
 GAME_SPEED = 5.0  # multiplier on simulation speed in the interactive view
@@ -321,7 +322,7 @@ def run_game(initial_level: str = LEVEL_ORDER[0]) -> None:
         hotkey_text = "No level hotkeys"
 
     play_instructions = [
-        f"Space: pause/resume | N: step | R: reset water/moves | P: print map | M: print map (no water) | {hotkey_text} | Tab: editor",
+        f"Space: pause/resume | N: step | R: reset water/moves | H: hint | P: print map | M: print map (no water) | {hotkey_text} | Tab: editor",
         "Modes: W wall | S sink | E emitter (tap again to rotate) | Left-click place/remove | Right-click clear water | Ctrl+Z undo | Ctrl+Y redo",
     ]
     editor_instructions = [
@@ -347,6 +348,7 @@ def run_game(initial_level: str = LEVEL_ORDER[0]) -> None:
     move_count = 0
     custom_level_index = 0
     save_counter = 0
+    hint_cell = None  # (gx, gy) of the currently suggested wall, or None
 
     step_acc = 0
     running = True
@@ -372,17 +374,20 @@ def run_game(initial_level: str = LEVEL_ORDER[0]) -> None:
         move_count += 1
 
     def clear_water_state():
+        nonlocal hint_cell
         water_state.clear()
+        hint_cell = None
         sync_sinks()
 
     def load_level(name):
-        nonlocal state
+        nonlocal state, hint_cell
         reset_sink_claims()
         level_state.load(name)
         view.create_screen(level_state.w, level_state.h)
         view.rebuild_static(level_state)
         clear_water_state()
         reset_moves()
+        hint_cell = None
         state = GameState.PLAYING
         history.clear()
         update_caption()
@@ -471,6 +476,15 @@ def run_game(initial_level: str = LEVEL_ORDER[0]) -> None:
                     reset_moves()
                     if state in (GameState.PAUSED, GameState.WON):
                         state = GameState.PLAYING
+                elif event.key == pygame.K_h:
+                    hint_cell = get_hint(
+                        level_state.w,
+                        level_state.h,
+                        frozenset(level_state.walls),
+                        level_state.emitters,
+                        level_state.sinks,
+                        frozenset(),
+                    )
                 elif event.key == pygame.K_w:
                     if input_mode.set_mode("wall"):
                         update_caption()
@@ -593,6 +607,11 @@ def run_game(initial_level: str = LEVEL_ORDER[0]) -> None:
         grid_surface.fill((20, 20, 20))
         view.static_sprites.draw(grid_surface)
         water_state.water_sprites.draw(grid_surface)
+        if hint_cell is not None:
+            hx, hy = hint_cell
+            hint_surf = pygame.Surface((TILE, TILE), pygame.SRCALPHA)
+            hint_surf.fill((255, 255, 0, 120))
+            grid_surface.blit(hint_surf, (hx * TILE, hy * TILE))
         draw_coords(grid_surface, level_state.w, level_state.h, font)
 
         pygame.display.flip()
