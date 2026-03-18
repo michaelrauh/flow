@@ -12,7 +12,10 @@ from graphics import (
     sync_sink_sprites,
     sync_water_sprites,
 )
-from levels import DIRS, DIR_TO_CHAR, Emitter, LEVEL_ORDER, LEVELS, get_level, parse_level
+from levels import (
+    DIRS, DIR_TO_CHAR, Emitter, LEVEL_ORDER, LEVELS,
+    get_custom_level_names, get_level, parse_level, save_level_json,
+)
 from simulation_constants import STEP_MS
 from simulation_engine import SimulationEngine
 from simulation_state import SimulationState
@@ -317,10 +320,15 @@ def run_game(initial_level: str = LEVEL_ORDER[0]) -> None:
     else:
         hotkey_text = "No level hotkeys"
 
-    instructions = [
-        f"Space: pause/resume | N: step | R: reset water/moves | P: print map | M: print map (no water) | {hotkey_text}",
+    play_instructions = [
+        f"Space: pause/resume | N: step | R: reset water/moves | P: print map | M: print map (no water) | {hotkey_text} | Tab: editor",
         "Modes: W wall | S sink | E emitter (tap again to rotate) | Left-click place/remove | Right-click clear water | Ctrl+Z undo | Ctrl+Y redo",
     ]
+    editor_instructions = [
+        "EDITOR MODE | Tab: back to game | Ctrl+S: save level | Ctrl+O: load next custom level",
+        "Modes: W wall | S sink | E emitter (tap again to rotate) | Left-click place/remove | Right-click clear water",
+    ]
+    instructions = play_instructions
     header_font = pygame.font.SysFont(None, 16)
     header_pad = 4
     header_line_count = len(instructions) + 2  # moves line + win status line
@@ -337,6 +345,8 @@ def run_game(initial_level: str = LEVEL_ORDER[0]) -> None:
     history = CommandHistory()
 
     move_count = 0
+    custom_level_index = 0
+    save_counter = 0
 
     step_acc = 0
     running = True
@@ -500,6 +510,32 @@ def run_game(initial_level: str = LEVEL_ORDER[0]) -> None:
                     )
                 elif event.key in level_hotkeys:
                     load_level(level_hotkeys[event.key])
+                elif event.key == pygame.K_TAB:
+                    if state == GameState.EDITOR:
+                        state = GameState.PLAYING
+                        instructions = play_instructions
+                    else:
+                        state = GameState.EDITOR
+                        instructions = editor_instructions
+                    update_caption()
+                elif event.key == pygame.K_s and (pygame.key.get_mods() & pygame.KMOD_CTRL):
+                    save_counter += 1
+                    name = f"{level_state.current_level}_edit{save_counter}"
+                    path = save_level_json(
+                        name,
+                        level_state.w,
+                        level_state.h,
+                        level_state.walls,
+                        level_state.emitters,
+                        level_state.sinks,
+                    )
+                    print(f"Saved level '{name}' to {path}")
+                elif event.key == pygame.K_o and (pygame.key.get_mods() & pygame.KMOD_CTRL):
+                    custom_names = get_custom_level_names()
+                    if custom_names:
+                        name = custom_names[custom_level_index % len(custom_names)]
+                        custom_level_index = (custom_level_index + 1) % len(custom_names)
+                        load_level(name)
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 mx, my = pygame.mouse.get_pos()
                 if my < header_height:
@@ -538,10 +574,18 @@ def run_game(initial_level: str = LEVEL_ORDER[0]) -> None:
         screen = view.screen
         screen.fill((20, 20, 20))
         pygame.draw.rect(screen, (30, 30, 30), (0, 0, level_state.w * TILE, header_height))
-        win_text = "All sinks saturated! You win!" if state == GameState.WON else ""
-        header_lines = [f"Moves: {move_count}"] + instructions + [win_text]
+        if state == GameState.EDITOR:
+            status_text = "-- EDITOR MODE --"
+        elif state == GameState.WON:
+            status_text = "All sinks saturated! You win!"
+        else:
+            status_text = ""
+        header_lines = [f"Moves: {move_count}"] + instructions + [status_text]
         for idx, line in enumerate(header_lines):
-            color = (120, 220, 120) if line and idx == len(header_lines) - 1 else (200, 200, 200)
+            if line and idx == len(header_lines) - 1:
+                color = (255, 200, 50) if state == GameState.EDITOR else (120, 220, 120)
+            else:
+                color = (200, 200, 200)
             text = header_font.render(line, True, color)
             screen.blit(text, (4, header_pad + idx * header_font.get_linesize()))
 

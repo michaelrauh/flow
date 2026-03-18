@@ -1,4 +1,8 @@
+import json
+import os
 from dataclasses import dataclass
+
+CUSTOM_LEVELS_DIR = "custom_levels"
 
 LEVEL_DENSE_WIDE = [
     "############################",
@@ -187,4 +191,43 @@ def parse_level(lines):
 def get_level(name):
     if name in LEVELS:
         return LEVELS[name]
+    path = os.path.join(CUSTOM_LEVELS_DIR, f"{name}.json")
+    if os.path.isfile(path):
+        with open(path) as f:
+            data = json.load(f)
+        return data["lines"]
     raise ValueError(f"Unknown level '{name}'. Known levels: {', '.join(sorted(LEVELS))}")
+
+
+def _level_to_lines(w, h, walls, emitters, sinks):
+    grid = [['.' for _ in range(w)] for _ in range(h)]
+    for (x, y) in walls:
+        if 0 <= y < h and 0 <= x < w:
+            grid[y][x] = '#'
+    for (x, y) in sinks:
+        if 0 <= y < h and 0 <= x < w:
+            grid[y][x] = 'S'
+    for emitter in emitters:
+        if 0 <= emitter.y < h and 0 <= emitter.x < w:
+            grid[emitter.y][emitter.x] = DIR_TO_CHAR.get((emitter.dx, emitter.dy), '>')
+    return [''.join(row) for row in grid]
+
+
+def save_level_json(name, w, h, walls, emitters, sinks):
+    os.makedirs(CUSTOM_LEVELS_DIR, exist_ok=True)
+    lines = _level_to_lines(w, h, walls, emitters, sinks)
+    data = {"name": name, "lines": lines}
+    path = os.path.join(CUSTOM_LEVELS_DIR, f"{name}.json")
+    with open(path, 'w') as f:
+        json.dump(data, f, indent=2)
+    return path
+
+
+def get_custom_level_names():
+    if not os.path.isdir(CUSTOM_LEVELS_DIR):
+        return []
+    return [
+        fname[:-5]
+        for fname in sorted(os.listdir(CUSTOM_LEVELS_DIR))
+        if fname.endswith('.json')
+    ]
