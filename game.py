@@ -1,4 +1,5 @@
 import pygame
+from enum import Enum, auto
 
 from ascii_renderer import AsciiRenderer
 from graphics import (
@@ -19,6 +20,14 @@ from simulation_state import SimulationState
 FPS = 60
 GAME_SPEED = 5.0  # multiplier on simulation speed in the interactive view
 _ENGINE = SimulationEngine()
+
+
+class GameState(Enum):
+    MENU = auto()
+    PLAYING = auto()
+    PAUSED = auto()
+    WON = auto()
+    EDITOR = auto()
 
 
 class InputMode:
@@ -270,7 +279,7 @@ def run_game(initial_level: str = LEVEL_ORDER[0]) -> None:
 
     step_acc = 0
     running = True
-    paused = False
+    state = GameState.PLAYING
 
     def update_caption():
         pygame.display.set_caption(
@@ -296,12 +305,14 @@ def run_game(initial_level: str = LEVEL_ORDER[0]) -> None:
         sync_sinks()
 
     def load_level(name):
+        nonlocal state
         reset_sink_claims()
         level_state.load(name)
         view.create_screen(level_state.w, level_state.h)
         view.rebuild_static(level_state)
         clear_water_state()
         reset_moves()
+        state = GameState.PLAYING
         update_caption()
 
     def handle_wall(gx, gy, toggle=True):
@@ -370,12 +381,18 @@ def run_game(initial_level: str = LEVEL_ORDER[0]) -> None:
                 running = False
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE:
-                    paused = not paused
+                    if state == GameState.PLAYING:
+                        state = GameState.PAUSED
+                    elif state == GameState.PAUSED:
+                        state = GameState.PLAYING
                 elif event.key == pygame.K_n:
-                    step_simulation()
+                    if state in (GameState.PLAYING, GameState.PAUSED):
+                        step_simulation()
                 elif event.key == pygame.K_r:
                     clear_water_state()
                     reset_moves()
+                    if state in (GameState.PAUSED, GameState.WON):
+                        state = GameState.PLAYING
                 elif event.key == pygame.K_w:
                     if input_mode.set_mode("wall"):
                         update_caption()
@@ -441,18 +458,19 @@ def run_game(initial_level: str = LEVEL_ORDER[0]) -> None:
                 elif buttons[2]:
                     clear_water_at(gx, gy)
 
-        if not paused:
+        if state == GameState.PLAYING:
             while step_acc >= STEP_MS:
                 step_acc -= STEP_MS
                 step_simulation()
+            if all_sinks_saturated():
+                state = GameState.WON
 
         sync_water()
 
-        win = all_sinks_saturated()
         screen = view.screen
         screen.fill((20, 20, 20))
         pygame.draw.rect(screen, (30, 30, 30), (0, 0, level_state.w * TILE, header_height))
-        win_text = "All sinks saturated! You win!" if win else ""
+        win_text = "All sinks saturated! You win!" if state == GameState.WON else ""
         header_lines = [f"Moves: {move_count}"] + instructions + [win_text]
         for idx, line in enumerate(header_lines):
             color = (120, 220, 120) if line and idx == len(header_lines) - 1 else (200, 200, 200)
