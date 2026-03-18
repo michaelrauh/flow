@@ -115,6 +115,48 @@ LEVEL_SPLIT_MAZE = [
     "#############################################",
 ]
 
+# Tutorial levels: one new mechanic per level
+LEVEL_INTRO_STRAIGHT = [
+    "##########",
+    "#>......S#",
+    "##########",
+]
+
+LEVEL_INTRO_TURN = [
+    "#########",
+    "#>....#.#",
+    "#.....S.#",
+    "#########",
+]
+
+LEVEL_INTRO_DECAY = [
+    "##############",
+    "#>...........#",
+    "#............#",
+    "#............#",
+    "#............#",
+    "#............#",
+    "#...........S#",
+    "##############",
+]
+
+LEVEL_INTRO_PREFER_LEFT = [
+    "##########",
+    "#>..###..#",
+    "#......#.#",
+    "#.##...#.#",
+    "#..#...S.#",
+    "##########",
+]
+
+LEVEL_INTRO_TWO_EMITTERS = [
+    "##############",
+    "#>..........S#",
+    "##############",
+    "#>..........S#",
+    "##############",
+]
+
 LEVEL_SPLIT_MAZE_CLAIM = [
     "#############################################",
     "#v#.#.#.#.#.#.......#.#.......#.#.#.#.#.#.#v#",
@@ -148,8 +190,21 @@ LEVELS = {
     "split_maze": LEVEL_SPLIT_MAZE,
     "empty": LEVEL_EMPTY,
     "split_maze_claim": LEVEL_SPLIT_MAZE_CLAIM,
+    "intro_straight": LEVEL_INTRO_STRAIGHT,
+    "intro_turn": LEVEL_INTRO_TURN,
+    "intro_decay": LEVEL_INTRO_DECAY,
+    "intro_prefer_left": LEVEL_INTRO_PREFER_LEFT,
+    "intro_two_emitters": LEVEL_INTRO_TWO_EMITTERS,
 }
-LEVEL_ORDER = ["wide", "turn", "zero", "maze_c", "split_maze", "empty"]
+LEVEL_ORDER = [
+    "intro_straight",
+    "intro_turn",
+    "intro_decay",
+    "intro_prefer_left",
+    "intro_two_emitters",
+    "split_switch",
+    "maze_c",
+]
 
 DIRS = {
     "^": (0, -1),
