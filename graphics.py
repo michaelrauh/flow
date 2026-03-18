@@ -72,17 +72,31 @@ def get_emitter_surface(dx, dy, color):
     return _EMITTER_SURFACE_CACHE[key]
 
 
-def get_water_surface(dx, dy, color):
-    key = (dx, dy, color)
+def _decay_tint(color, age, decay_steps):
+    """Return (tinted_color, alpha) blended toward red-orange as age approaches decay."""
+    if age == 0 or decay_steps <= 1:
+        return color, 255
+    ratio = age / (decay_steps - 1)
+    r, g, b = color
+    nr = min(255, int(r + (255 - r) * ratio * 0.7))
+    ng = int(g * (1 - ratio * 0.6))
+    nb = int(b * (1 - ratio * 0.6))
+    alpha = int(255 * (1 - ratio * 0.35))
+    return (nr, ng, nb), alpha
+
+
+def get_water_surface(dx, dy, color, age=0, decay_steps=1):
+    key = (dx, dy, color, age, decay_steps)
     if key not in _WATER_SURFACE_CACHE:
         surface = pygame.Surface((TILE, TILE), pygame.SRCALPHA)
         center = (TILE // 2, TILE // 2)
-        pygame.draw.circle(surface, color, center, TILE // 3)
+        draw_color, alpha = _decay_tint(color, age, decay_steps)
+        pygame.draw.circle(surface, (*draw_color, alpha), center, TILE // 3)
         arrow_end = (
             center[0] + dx * (TILE // 2 - 3),
             center[1] + dy * (TILE // 2 - 3),
         )
-        pygame.draw.line(surface, _lighten(color, 1.25), center, arrow_end, 3)
+        pygame.draw.line(surface, (*_lighten(draw_color, 1.25), alpha), center, arrow_end, 3)
         _WATER_SURFACE_CACHE[key] = surface
     return _WATER_SURFACE_CACHE[key]
 
@@ -119,17 +133,21 @@ class EmitterSprite(TileSprite):
 
 
 class WaterSprite(TileSprite):
-    def __init__(self, x, y, dx, dy, color):
-        super().__init__(x, y, get_water_surface(dx, dy, color))
+    def __init__(self, x, y, dx, dy, color, age=0, decay_steps=1):
+        super().__init__(x, y, get_water_surface(dx, dy, color, age, decay_steps))
         self.dx = dx
         self.dy = dy
         self.color = color
+        self.age = age
+        self.decay_steps = decay_steps
 
-    def update_state(self, x, y, dx, dy, color):
-        if (dx, dy) != (self.dx, self.dy) or color != self.color:
-            self.image = get_water_surface(dx, dy, color)
+    def update_state(self, x, y, dx, dy, color, age=0, decay_steps=1):
+        if (dx, dy) != (self.dx, self.dy) or color != self.color or age != self.age or decay_steps != self.decay_steps:
+            self.image = get_water_surface(dx, dy, color, age, decay_steps)
         self.dx, self.dy = dx, dy
         self.color = color
+        self.age = age
+        self.decay_steps = decay_steps
         if (x, y) != self.grid_pos:
             self.grid_pos = (x, y)
             self.rect.topleft = (x * TILE, y * TILE)
@@ -163,6 +181,7 @@ def sync_water_sprites(
     water_state: Mapping[Coord, WaterCell],
     water_group,
     emitter_colors,
+    decay_steps: int = 1,
 ):
     existing = {(sprite.grid_pos): sprite for sprite in water_group.sprites()}
     missing = set(existing.keys()) - set(water_state.keys())
@@ -171,13 +190,13 @@ def sync_water_sprites(
         existing.pop(pos, None)
 
     for (x, y), cell in water_state.items():
-        dx, dy, eid = cell.dx, cell.dy, cell.emitter_id
+        dx, dy, eid, age = cell.dx, cell.dy, cell.emitter_id, cell.age
         color = emitter_colors.get(eid, emitter_color_for_id(eid))
         sprite = existing.get((x, y))
         if sprite is None:
-            water_group.add(WaterSprite(x, y, dx, dy, color))
+            water_group.add(WaterSprite(x, y, dx, dy, color, age, decay_steps))
         else:
-            sprite.update_state(x, y, dx, dy, color)
+            sprite.update_state(x, y, dx, dy, color, age, decay_steps)
 
 
 def sync_sink_sprites(sink_lookup, sink_claims, emitter_colors):

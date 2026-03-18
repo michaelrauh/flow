@@ -280,7 +280,7 @@ class WaterState:
         _ENGINE.tick(level.w, level.h, level.walls, level.emitters, level.sinks, self.sim_state)
 
     def sync(self, level: LevelState):
-        sync_water_sprites(self.sim_state.water, self.water_sprites, level.emitter_colors)
+        sync_water_sprites(self.sim_state.water, self.water_sprites, level.emitter_colors, _ENGINE.decay_steps)
 
 
 def run_game(initial_level: str = LEVEL_ORDER[0]) -> None:
