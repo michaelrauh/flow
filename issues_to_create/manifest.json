@@ -1,0 +1,99 @@
+[
+  {
+    "file": "issue-1-movementresolver-is-a-god-object.md",
+    "title": "MovementResolver is a God Object",
+    "labels": [
+      "priority: high",
+      "type: extensibility",
+      "type: maintainability"
+    ],
+    "priority": "high"
+  },
+  {
+    "file": "issue-2-no-configuration-system-for-physics-constants.md",
+    "title": "No Configuration System for Physics Constants",
+    "labels": [
+      "priority: medium",
+      "type: extensibility",
+      "type: usability"
+    ],
+    "priority": "medium"
+  },
+  {
+    "file": "issue-3-direction-mappings-duplicated-across-files.md",
+    "title": "Direction Mappings Duplicated Across Files",
+    "labels": [
+      "priority: medium",
+      "type: extensibility",
+      "type: maintainability"
+    ],
+    "priority": "medium"
+  },
+  {
+    "file": "issue-4-global-mutable-state-in-graphics-module.md",
+    "title": "Global Mutable State in Graphics Module",
+    "labels": [
+      "priority: medium",
+      "type: scalability",
+      "type: testability"
+    ],
+    "priority": "medium"
+  },
+  {
+    "file": "issue-5-prev_owner-dict-rebuilt-every-tick.md",
+    "title": "prev_owner Dict Rebuilt Every Tick",
+    "labels": [
+      "priority: medium",
+      "type: scalability",
+      "type: performance"
+    ],
+    "priority": "medium"
+  },
+  {
+    "file": "issue-6-no-spatial-indexing-for-collision-detection.md",
+    "title": "No Spatial Indexing for Collision Detection",
+    "labels": [
+      "priority: medium",
+      "type: scalability"
+    ],
+    "priority": "medium"
+  },
+  {
+    "file": "issue-7-hardcoded-entity-type-system.md",
+    "title": "Hardcoded Entity Type System",
+    "labels": [
+      "priority: high",
+      "type: extensibility"
+    ],
+    "priority": "high"
+  },
+  {
+    "file": "issue-8-ascii-only-level-format.md",
+    "title": "ASCII-Only Level Format",
+    "labels": [
+      "priority: medium",
+      "type: extensibility",
+      "type: usability"
+    ],
+    "priority": "medium"
+  },
+  {
+    "file": "issue-9-global-simulation-engine-instance.md",
+    "title": "Global Simulation Engine Instance",
+    "labels": [
+      "priority: low",
+      "type: extensibility",
+      "type: testability"
+    ],
+    "priority": "low"
+  },
+  {
+    "file": "issue-10-emitter-id-assignment-assumes-sequential-ids.md",
+    "title": "Emitter ID Assignment Assumes Sequential IDs",
+    "labels": [
+      "priority: low",
+      "type: extensibility"
+    ],
+    "priority": "low"
+  }
+]
